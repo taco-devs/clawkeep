@@ -1,0 +1,36 @@
+{
+  "name": "clawkeep",
+  "version": "0.1.0",
+  "description": "Git-backed memory persistence for AI agents",
+  "main": "src/index.js",
+  "bin": {
+    "clawkeep": "./bin/clawkeep.js"
+  },
+  "scripts": {
+    "test": "node test/run.js",
+    "lint": "echo 'TODO: add linter'"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "backup",
+    "memory",
+    "persistence",
+    "git",
+    "openclaw",
+    "clawdbot",
+    "nanobot"
+  ],
+  "author": "ClawKeep Team",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "ora": "^5.4.1",
+    "simple-git": "^3.22.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
