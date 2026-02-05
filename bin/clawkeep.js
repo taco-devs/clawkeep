@@ -113,6 +113,14 @@ program
   .option('-p, --password <pass>', 'Decryption password (or CLAWKEEP_PASSWORD env)')
   .action((file, opts) => require('../src/commands/import')(file, opts));
 
+// ui
+program
+  .command('ui')
+  .description('Launch the web dashboard')
+  .option('-d, --dir <path>', 'Target directory', '.')
+  .option('--port <port>', 'Port number', '3333')
+  .action((opts) => require('../src/commands/ui')(opts));
+
 // status
 program
   .command('status')
