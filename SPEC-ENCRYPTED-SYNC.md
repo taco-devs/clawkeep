@@ -152,14 +152,11 @@ class BackupTransport {
 
 #### Target Implementations
 
+All targets use the same encrypted chunk format. Git is NEVER exposed as a backup target — it is only the internal versioning engine. Users never see or interact with git.
+
 **Local path** (`LocalTransport`):
 - `fs.writeFile` / `fs.readFile` / `fs.unlink` / `fs.readdir`
 - Works with any mounted path: NAS, USB drive, NFS, SMB
-
-**Git remote** (`GitTransport`):
-- Keep existing behavior: native `git push` (already encrypted in transit via SSH/HTTPS)
-- No chunks needed — git handles incremental natively
-- This is the "power user" option
 
 **S3/R2** (`S3Transport`) — future:
 - `PutObject` / `GetObject` / `DeleteObject` / `ListObjectsV2`
@@ -178,9 +175,10 @@ clawkeep backup set-password
 # → prompts for password interactively
 # → or: CLAWKEEP_PASSWORD=xxx clawkeep backup set-password
 
-# Configure local target (encrypted)
+# Configure local target (always encrypted)
 clawkeep backup local /mnt/nas/backups
 # → sets target, prompts for password if not set
+# This is the ONLY way to back up. No git remotes exposed.
 
 # Sync now
 clawkeep backup sync
@@ -200,6 +198,16 @@ clawkeep backup restore /mnt/nas/backups/workspace-id/
 # Test connection + verify manifest
 clawkeep backup test
 ```
+
+### Removed Commands
+
+The following commands are REMOVED — git is internal only:
+
+- `clawkeep push` — removed (use `clawkeep backup sync`)
+- `clawkeep pull` — removed (use `clawkeep backup restore`)
+- `clawkeep backup git <url>` — removed (no git remote target)
+
+All remote sync goes through encrypted chunks. No exceptions.
 
 ### Dashboard Changes
 
