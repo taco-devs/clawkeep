@@ -1,4 +1,4 @@
-/* ClawKeep — GitHub-style UI */
+/* ClawKeep — Backup Dashboard */
 'use strict';
 
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
@@ -97,7 +97,6 @@ function getLang(filename) {
 function highlight(code, lang) {
   if (!lang || lang === 'md') return esc(code);
 
-  // JSON: special handling
   if (lang === 'json') return highlightJSON(code);
   if (lang === 'yaml') return highlightYAML(code);
   if (lang === 'html') return highlightHTML(code);
@@ -111,7 +110,6 @@ function highlight(code, lang) {
   const out = [];
   let i = 0;
   while (i < code.length) {
-    // Block comment
     if (hasBlockComment && code[i] === '/' && code[i + 1] === '*') {
       const end = code.indexOf('*/', i + 2);
       const slice = end === -1 ? code.substring(i) : code.substring(i, end + 2);
@@ -119,7 +117,6 @@ function highlight(code, lang) {
       i += slice.length;
       continue;
     }
-    // Line comment
     if (code.substring(i, i + commentLine.length) === commentLine) {
       const nl = code.indexOf('\n', i);
       const slice = nl === -1 ? code.substring(i) : code.substring(i, nl);
@@ -127,7 +124,6 @@ function highlight(code, lang) {
       i += slice.length;
       continue;
     }
-    // Python/shell: # comment (only at line start or after space)
     if ((lang === 'py' || lang === 'sh') && code[i] === '#') {
       const nl = code.indexOf('\n', i);
       const slice = nl === -1 ? code.substring(i) : code.substring(i, nl);
@@ -135,7 +131,6 @@ function highlight(code, lang) {
       i += slice.length;
       continue;
     }
-    // Strings
     if (code[i] === '"' || code[i] === "'" || code[i] === '`') {
       const q = code[i];
       let j = i + 1;
@@ -149,7 +144,6 @@ function highlight(code, lang) {
       i = j;
       continue;
     }
-    // Numbers
     if (/[0-9]/.test(code[i]) && (i === 0 || /[^a-zA-Z_$]/.test(code[i - 1]))) {
       let j = i;
       while (j < code.length && /[0-9a-fA-FxXoObBeE._]/.test(code[j])) j++;
@@ -157,12 +151,10 @@ function highlight(code, lang) {
       i = j;
       continue;
     }
-    // Words (keywords, constants, functions)
     if (/[a-zA-Z_$@]/.test(code[i])) {
       let j = i;
       while (j < code.length && /[a-zA-Z0-9_$]/.test(code[j])) j++;
       const word = code.substring(i, j);
-      // Look ahead for function call
       let la = j;
       while (la < code.length && code[la] === ' ') la++;
       if (new RegExp('^(' + kw + ')$').test(word)) {
@@ -186,13 +178,9 @@ function highlight(code, lang) {
 function highlightJSON(code) {
   return code.split('\n').map(line => {
     let h = esc(line);
-    // Keys
     h = h.replace(/^(\s*)(&quot;[^&]*?&quot;)(\s*:)/g, '$1<span class="hl-prop">$2</span>$3');
-    // String values
     h = h.replace(/:\s*(&quot;[^&]*?&quot;)/g, ': <span class="hl-str">$1</span>');
-    // Numbers
     h = h.replace(/:\s*(-?[0-9][0-9.eE]*)/g, ': <span class="hl-num">$1</span>');
-    // Booleans & null
     h = h.replace(/:\s*(true|false|null)\b/g, ': <span class="hl-const">$1</span>');
     return h;
   }).join('\n');
@@ -201,15 +189,10 @@ function highlightJSON(code) {
 function highlightYAML(code) {
   return code.split('\n').map(line => {
     let h = esc(line);
-    // Comments
     if (/^\s*#/.test(line)) return '<span class="hl-cm">' + h + '</span>';
-    // Keys
     h = h.replace(/^(\s*)([\w][\w.-]*)(\s*:)/g, '$1<span class="hl-prop">$2</span>$3');
-    // String values
     h = h.replace(/:\s*(&quot;[^&]*?&quot;|&#x27;[^&]*?&#x27;)/g, ': <span class="hl-str">$1</span>');
-    // Booleans & null
     h = h.replace(/:\s*(true|false|null|yes|no)\s*$/gi, ': <span class="hl-const">$1</span>');
-    // Numbers
     h = h.replace(/:\s*(-?[0-9][0-9.]*)\s*$/g, ': <span class="hl-num">$1</span>');
     return h;
   }).join('\n');
@@ -290,12 +273,10 @@ function parseDiffSections(rawDiff) {
   const chunks = rawDiff.split(/^(?=diff --git )/m);
   return chunks.filter(c => c.trim()).map(chunk => {
     const lines = chunk.split('\n');
-    // Extract filename
     const header = lines[0] || '';
     const match = header.match(/^diff --git a\/(.+?) b\/(.+)/);
     const filename = match ? match[2] : 'unknown';
 
-    // Count additions and deletions
     let additions = 0, deletions = 0;
     const body = [];
     let oldLine = 0, newLine = 0;
@@ -370,35 +351,72 @@ function toggleDiffSection(id) {
 
 
 /* ═══ TABS ═══ */
-$$('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    $$('.nav-item').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    $('#page-title').textContent = { overview: 'Overview', commits: 'Commits', files: 'Code', diff: 'Changes' }[tab];
-    ['overview', 'commits', 'files', 'diff'].forEach(id => $('#tab-' + id).classList.toggle('hidden', id !== tab));
-    if (tab === 'commits') loadCommits();
-    if (tab === 'files') { timeTravelHash = null; loadFiles('.'); }
-    if (tab === 'diff') loadDiff();
+function switchTab(name) {
+  $$('.nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === name);
   });
+  $('#page-title').textContent = { dashboard: 'Dashboard', history: 'History', backup: 'Backup', browse: 'Browse' }[name];
+  ['dashboard', 'history', 'backup', 'browse'].forEach(id => {
+    const el = $('#tab-' + id);
+    if (el) el.classList.toggle('hidden', id !== name);
+  });
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'history') loadHistory();
+  if (name === 'backup') loadBackup();
+  if (name === 'browse') { timeTravelHash = null; loadFiles('.'); }
+}
+
+$$('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 
-/* ═══ OVERVIEW ═══ */
-async function loadOverview() {
-  const data = await api('status');
-  const c = data.config, s = data.stats, gs = data.gitStatus;
 
-  const lastSnap = s.lastSnap ? timeAgo(s.lastSnap) : 'never';
-  $('#sidebar-info').innerHTML = `<strong>${s.totalSnaps} snapshots</strong>${s.trackedFiles} files · ${s.daysTracked || '< 1'}d`;
+/* ═══ DASHBOARD ═══ */
+async function loadDashboard() {
+  const [data, backupStatus, watchStatus, repoSize] = await Promise.all([
+    api('status'),
+    api('backup/status').catch(() => ({})),
+    api('backup/watch-status').catch(() => ({})),
+    api('backup/repo-size').catch(() => ({})),
+  ]);
 
+  const s = data.stats, gs = data.gitStatus;
+  const lastBackup = s.lastSnap ? timeAgo(s.lastSnap) : 'never';
+  const sizeStr = repoSize.size ? fmtSize(repoSize.size) : '--';
+  const isWatching = watchStatus.running || false;
+  const statusLabel = isWatching ? 'Active' : 'Idle';
+
+  $('#sidebar-info').innerHTML = `<strong>${s.totalSnaps} backups</strong>${s.trackedFiles} files`;
+
+  // Stats grid
   $('#stats-grid').innerHTML = `
-    <div class="stat-card"><div class="stat-label">Snapshots</div><div class="stat-value">${s.totalSnaps.toLocaleString()}</div></div>
-    <div class="stat-card"><div class="stat-label">Files tracked</div><div class="stat-value">${s.trackedFiles.toLocaleString()}</div></div>
-    <div class="stat-card"><div class="stat-label">Days active</div><div class="stat-value">${s.daysTracked || '< 1'}</div></div>
-    <div class="stat-card"><div class="stat-label">Last snapshot</div><div class="stat-value" style="font-size:16px">${lastSnap}</div></div>
+    <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value">${statusLabel}</div></div>
+    <div class="stat-card"><div class="stat-label">Backups</div><div class="stat-value">${s.totalSnaps.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Files</div><div class="stat-value">${s.trackedFiles.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Size</div><div class="stat-value">${sizeStr}</div></div>
   `;
 
-  // Pending changes — compact banner, not a full section
+  // Protection status
+  const checks = [];
+  if (isWatching) {
+    checks.push('<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Watch daemon running</div>');
+  } else {
+    checks.push('<div class="prot-item prot-warn"><span class="prot-icon">&#9888;</span> Watch daemon not running</div>');
+  }
+  if (s.lastSnap) {
+    checks.push(`<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Last backup: ${lastBackup}</div>`);
+  } else {
+    checks.push('<div class="prot-item prot-warn"><span class="prot-icon">&#9888;</span> No backups yet</div>');
+  }
+  if (backupStatus.target) {
+    const syncLabel = backupStatus.lastSync ? `synced ${timeAgo(backupStatus.lastSync)}` : 'not synced yet';
+    checks.push(`<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Backup target: ${esc(backupStatus.targetLabel || backupStatus.target)} (${syncLabel})</div>`);
+  } else {
+    checks.push('<div class="prot-item prot-warn"><span class="prot-icon">&#9888;</span> No backup target configured</div>');
+  }
+  $('#protection-status').innerHTML = `<div class="box prot-box"><div class="box-header">Protection status</div><div class="box-body-pad">${checks.join('')}</div></div>`;
+
+  // Pending changes
   const banner = $('#pending-banner');
   if (!gs.clean) {
     const fileList = (gs.files || []).slice(0, 5).map(f => {
@@ -406,46 +424,48 @@ async function loadOverview() {
       if (f.working_dir === '?' || f.index === '?') { cls = 'cb-a'; label = 'A'; }
       else if (f.working_dir === 'D' || f.index === 'D') { cls = 'cb-d'; label = 'D'; }
       return `<span class="change-badge ${cls}">${label}</span> <span class="pending-path">${esc(f.path)}</span>`;
-    }).join('<span class="pending-sep">·</span>');
+    }).join('<span class="pending-sep">&middot;</span>');
     const more = gs.total > 5 ? `<span class="pending-more">+${gs.total - 5} more</span>` : '';
     banner.innerHTML = `<div class="pending-banner">
       <div class="pending-left"><span class="pending-dot"></span><strong>${gs.total} unsaved change${gs.total !== 1 ? 's' : ''}</strong></div>
       <div class="pending-files">${fileList}${more}</div>
-      <button class="btn btn-primary btn-sm" onclick="takeSnap()">Snapshot now</button>
+      <button class="btn btn-primary btn-sm" onclick="takeSnap()">Backup now</button>
     </div>`;
   } else {
     banner.innerHTML = '';
   }
 
-  // Recent commits — the main event
-  const entries = await api('log', 'limit=20');
+  // Recent changes (last 5)
+  const entries = await api('log', 'limit=5');
   $('#recent-count').textContent = entries.length;
   if (!entries.length) {
-    $('#recent-body').innerHTML = '<div class="empty">No snapshots yet. Make some changes and hit Snapshot.</div>';
+    $('#recent-body').innerHTML = '<div class="empty">No backups yet. Make some changes and back up.</div>';
   } else {
-    $('#recent-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, true)).join('');
+    const viewAll = `<div class="view-all"><a href="#" onclick="switchTab('history');return false">View all &rarr;</a></div>`;
+    $('#recent-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, false)).join('') + viewAll;
   }
 
   $('#last-updated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-/* ═══ COMMITS ═══ */
-let commitDetailHash = null;
 
-async function loadCommits() {
-  commitDetailHash = null;
+/* ═══ HISTORY ═══ */
+let historyDetailHash = null;
+
+async function loadHistory() {
+  historyDetailHash = null;
   if (compareMode) toggleCompareMode();
-  const detail = $('#commit-detail-view');
+  const detail = $('#history-detail-view');
   if (detail) detail.classList.add('hidden');
-  const list = $('#commits-list');
+  const list = $('#history-list');
   if (list) list.classList.remove('hidden');
   const result = $('#compare-result');
   if (result) result.classList.add('hidden');
 
   const entries = await api('log', 'limit=100');
-  $('#commits-count').textContent = entries.length;
-  if (!entries.length) { $('#commits-body').innerHTML = '<div class="empty">No commits yet</div>'; return; }
-  $('#commits-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, true)).join('');
+  $('#history-count').textContent = entries.length;
+  if (!entries.length) { $('#history-body').innerHTML = '<div class="empty">No backups yet</div>'; return; }
+  $('#history-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, true)).join('');
 }
 
 function commitRow(e, isLatest, clickable) {
@@ -467,56 +487,51 @@ function commitRow(e, isLatest, clickable) {
     </div>`;
 }
 
-async function showCommitDetail(hash) {
-  commitDetailHash = hash;
+async function showBackupDetail(hash) {
+  historyDetailHash = hash;
 
-  // If we're in the overview tab, switch to commits tab
+  // Switch to history tab if not already there
   const activeTab = $('.nav-item.active');
-  if (activeTab && activeTab.dataset.tab !== 'commits') {
-    $$('.nav-item').forEach(b => b.classList.remove('active'));
-    $$('.nav-item').forEach(b => { if (b.dataset.tab === 'commits') b.classList.add('active'); });
-    $('#page-title').textContent = 'Commits';
-    ['overview', 'commits', 'files', 'diff'].forEach(id => $('#tab-' + id).classList.toggle('hidden', id !== 'commits'));
+  if (activeTab && activeTab.dataset.tab !== 'history') {
+    switchTab('history');
   }
 
   // Hide list, show detail
-  const list = $('#commits-list');
+  const list = $('#history-list');
   if (list) list.classList.add('hidden');
-  let detail = $('#commit-detail-view');
+  let detail = $('#history-detail-view');
   if (!detail) {
     const d = document.createElement('div');
-    d.id = 'commit-detail-view';
-    $('#tab-commits').appendChild(d);
+    d.id = 'history-detail-view';
+    $('#tab-history').appendChild(d);
     detail = d;
   }
   detail.classList.remove('hidden');
-  detail.innerHTML = '<div class="empty" style="padding:60px">Loading commit...</div>';
+  detail.innerHTML = '<div class="empty" style="padding:60px">Loading backup...</div>';
 
-  // Fetch metadata and diff in parallel
   const [meta, diffData] = await Promise.all([
     api('commit', 'hash=' + hash),
     api('commit/diff', 'hash=' + hash),
   ]);
 
   const short = hash.substring(0, 7);
-  const totalAdditions = meta.files ? meta.files.reduce((s, f) => s + (f.changes || 0), 0) : 0;
 
   detail.innerHTML = `
     <div class="commit-detail-page">
-      <button class="btn btn-ghost commit-back" onclick="loadCommits()">&#8592; Back to commits</button>
+      <button class="btn btn-ghost commit-back" onclick="loadHistory()">&#8592; Back to history</button>
       <div class="cdp-header">
-        <h2 class="cdp-message">${esc(meta.message || 'Commit ' + short)}</h2>
+        <h2 class="cdp-message">${esc(meta.message || 'Backup ' + short)}</h2>
         <div class="cdp-meta">
           <span class="commit-hash">${short}</span>
-          <span>${esc(meta.author || 'ClawKeep')} committed ${meta.date ? timeAgo(meta.date) : ''}</span>
+          <span>${meta.date ? timeAgo(meta.date) : ''}</span>
         </div>
         <div class="cdp-summary">
           ${meta.files ? meta.files.length + ' file' + (meta.files.length !== 1 ? 's' : '') + ' changed' : ''}
           ${meta.summary ? ' &middot; ' + esc(meta.summary) : ''}
         </div>
         <div class="cdp-actions">
-          <button class="btn btn-ghost" onclick="browseAtCommit('${hash}')">📁 Browse files</button>
-          <button class="btn btn-danger" onclick="confirmRestore('${hash}')">↩ Restore to this snapshot</button>
+          <button class="btn btn-ghost" onclick="browseAtCommit('${hash}')">Browse files at this point</button>
+          <button class="btn btn-danger" onclick="confirmRestore('${hash}')">Restore to this backup</button>
         </div>
       </div>
       <div class="cdp-diff">
@@ -526,7 +541,199 @@ async function showCommitDetail(hash) {
 }
 
 
-/* ═══ FILES ═══ */
+/* ═══ BACKUP TAB ═══ */
+async function loadBackup() {
+  const [backupStatus, repoSize] = await Promise.all([
+    api('backup/status').catch(() => ({})),
+    api('backup/repo-size').catch(() => ({})),
+  ]);
+
+  const container = $('#backup-content');
+  let html = '';
+
+  if (backupStatus.target) {
+    // Configured: show status card
+    const targetIcon = { local: 'folder', git: 'git', cloud: 'cloud', s3: 'cloud' }[backupStatus.target] || 'folder';
+    const syncLabel = backupStatus.lastSync ? timeAgo(backupStatus.lastSync) : 'never';
+    const autoSync = backupStatus.autoSync ? 'On' : 'Off';
+
+    html += `<div class="box">
+      <div class="box-header">Backup target</div>
+      <div class="box-body-pad">
+        <div class="target-status">
+          <div class="target-info">
+            <div class="target-type">${esc(backupStatus.target.charAt(0).toUpperCase() + backupStatus.target.slice(1))} &mdash; ${esc(backupStatus.targetLabel || '')}</div>
+            <div class="target-detail">Last sync: ${syncLabel} &middot; Auto-sync: ${autoSync}</div>
+          </div>
+          <div class="target-actions">
+            <button class="btn btn-primary btn-sm" onclick="doSync()">Sync now</button>
+            <button class="btn btn-ghost btn-sm" onclick="doTest()">Test connection</button>
+            <button class="btn btn-ghost btn-sm" onclick="showSetTarget()">Change target</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  } else {
+    // Not configured: show target selection
+    html += `<div class="box">
+      <div class="box-header">Backup target</div>
+      <div class="box-body-pad">
+        <p class="target-prompt">Choose where to back up your data.</p>
+        <div class="target-cards">
+          <div class="target-card" onclick="showSetTarget('local')">
+            <div class="target-card-icon">&#128193;</div>
+            <div class="target-card-title">Local path</div>
+            <div class="target-card-desc">Mirror to a local folder, NAS, or external drive</div>
+          </div>
+          <div class="target-card" onclick="showSetTarget('git')">
+            <div class="target-card-icon">&#128268;</div>
+            <div class="target-card-title">Git remote</div>
+            <div class="target-card-desc">Push to a remote git repository</div>
+          </div>
+          <div class="target-card disabled">
+            <div class="target-card-icon">&#9729;</div>
+            <div class="target-card-title">Cloud</div>
+            <div class="target-card-desc">Coming soon</div>
+          </div>
+          <div class="target-card disabled">
+            <div class="target-card-icon">&#9741;</div>
+            <div class="target-card-title">S3</div>
+            <div class="target-card-desc">Coming soon</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Export card
+  const sizeStr = repoSize.size ? fmtSize(repoSize.size) : '';
+  html += `<div class="box" style="margin-top:16px">
+    <div class="box-header">Export</div>
+    <div class="box-body-pad">
+      <p class="export-desc">Download an encrypted copy of your entire backup history. AES-256 encrypted, password protected.</p>
+      <div class="export-form">
+        <input class="modal-input" id="export-password" type="password" placeholder="Encryption password">
+        <button class="btn btn-primary" id="export-btn" onclick="downloadExport()">Download encrypted backup</button>
+      </div>
+      ${sizeStr ? `<div class="export-size">Estimated size: ~${sizeStr}</div>` : ''}
+    </div>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+function showSetTarget(type) {
+  if (type === 'local') {
+    showModal(`
+      <h3>Set local backup target</h3>
+      <p>Enter the path where backups should be mirrored. A bare git mirror will be created at this location.</p>
+      <input class="modal-input" id="target-path" type="text" placeholder="/mnt/nas/backups/my-project" autofocus>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="doSetTarget('local')">Set target</button>
+      </div>
+    `);
+    setTimeout(() => { const el = $('#target-path'); if (el) el.focus(); }, 50);
+  } else if (type === 'git') {
+    showModal(`
+      <h3>Set git remote target</h3>
+      <p>Enter the URL of the remote repository.</p>
+      <input class="modal-input" id="target-url" type="text" placeholder="git@github.com:user/repo.git" autofocus>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="doSetTarget('git')">Set target</button>
+      </div>
+    `);
+    setTimeout(() => { const el = $('#target-url'); if (el) el.focus(); }, 50);
+  } else {
+    // Show choice modal (when changing target)
+    showModal(`
+      <h3>Change backup target</h3>
+      <p>Select a backup target type.</p>
+      <div class="modal-actions" style="flex-direction:column;gap:8px;align-items:stretch">
+        <button class="btn btn-ghost" onclick="closeModal();showSetTarget('local')">Local path</button>
+        <button class="btn btn-ghost" onclick="closeModal();showSetTarget('git')">Git remote</button>
+      </div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      </div>
+    `);
+  }
+}
+
+async function doSetTarget(type) {
+  let options = {};
+  if (type === 'local') {
+    const path = $('#target-path').value.trim();
+    if (!path) { toast('Path is required'); return; }
+    options = { path };
+  } else if (type === 'git') {
+    const url = $('#target-url').value.trim();
+    if (!url) { toast('URL is required'); return; }
+    options = { url };
+  }
+  closeModal();
+  toast('Setting backup target...');
+  try {
+    const r = await api('backup/set-target', 'type=' + encodeURIComponent(type) + '&options=' + encodeURIComponent(JSON.stringify(options)));
+    if (r.error) { toast('Error: ' + esc(r.error)); return; }
+    toast('Backup target set', true);
+    loadBackup();
+  } catch (e) { toast('Error: ' + esc(e.message)); }
+}
+
+async function doSync() {
+  toast('Syncing...');
+  try {
+    const r = await api('backup/sync');
+    if (r.error) { toast('Sync failed: ' + esc(r.error)); return; }
+    toast('Synced successfully', true);
+    loadBackup();
+  } catch (e) { toast('Sync failed: ' + esc(e.message)); }
+}
+
+async function doTest() {
+  toast('Testing connection...');
+  try {
+    const r = await api('backup/test');
+    if (r.error) { toast('Test failed: ' + esc(r.error)); return; }
+    toast('Connection OK (' + (r.latency || 0) + 'ms)', true);
+  } catch (e) { toast('Test failed: ' + esc(e.message)); }
+}
+
+async function downloadExport() {
+  const password = $('#export-password').value;
+  if (!password) { toast('Password required'); return; }
+  const btn = $('#export-btn');
+  btn.disabled = true;
+  btn.textContent = 'Preparing...';
+  try {
+    const res = await fetch('/api/backup/export' + Q('password=' + encodeURIComponent(password)));
+    if (!res.ok) {
+      let msg = 'Export failed';
+      try { const d = await res.json(); msg = d.error || msg; } catch {}
+      toast(msg);
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'backup.clawkeep.enc';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast('Export downloaded', true);
+  } catch (e) { toast('Export failed: ' + esc(e.message)); }
+  finally {
+    btn.disabled = false;
+    btn.textContent = 'Download encrypted backup';
+  }
+}
+
+
+/* ═══ BROWSE ═══ */
 let currentPath = '.';
 
 async function loadFiles(p) {
@@ -553,14 +760,14 @@ async function loadFiles(p) {
   if (p !== '.') {
     const parent = p.split('/').slice(0, -1).join('/') || '.';
     rows.push(`<div class="file-row" onclick="loadFiles('${parent.replace(/'/g, "\\'")}')">
-      <span class="file-icon">📁</span><span class="file-name is-dir">..</span>
+      <span class="file-icon">&#128193;</span><span class="file-name is-dir">..</span>
       <span class="file-msg"></span><span class="file-time"></span></div>`);
   }
   files.forEach(f => {
     const safePath = f.path.replace(/'/g, "\\'");
     if (f.type === 'dir') {
       rows.push(`<div class="file-row" data-filepath="${esc(f.path)}" onclick="loadFiles('${safePath}')">
-        <span class="file-icon">📁</span><span class="file-name is-dir">${esc(f.name)}</span>
+        <span class="file-icon">&#128193;</span><span class="file-name is-dir">${esc(f.name)}</span>
         <span class="file-msg"></span><span class="file-time"></span></div>`);
     } else {
       rows.push(`<div class="file-row" data-filepath="${esc(f.path)}" onclick="viewFile('${safePath}')">
@@ -573,10 +780,8 @@ async function loadFiles(p) {
   $('#fb-body').innerHTML = rows.join('');
   $('#file-viewer').innerHTML = '';
 
-  // Feature 1: Progressively load file history
   loadFileHistory(p);
 
-  // Feature 2: Auto-render README below file list
   const readme = files.find(f => /^readme\.md$/i.test(f.name) && f.type === 'file');
   const readmeContainer = $('#readme-render');
   if (readme) {
@@ -584,7 +789,7 @@ async function loadFiles(p) {
     const data = await api('file', 'path=' + encodeURIComponent(readme.path));
     if (readmeContainer && data.content) {
       readmeContainer.innerHTML = `<div class="box readme-box">
-        <div class="box-header"><span class="file-icon">📝</span> ${esc(readme.name)}</div>
+        <div class="box-header"><span class="file-icon">&#128221;</span> ${esc(readme.name)}</div>
         <div class="md-render">${renderMarkdown(data.content)}</div>
       </div>`;
     }
@@ -600,7 +805,6 @@ async function loadFileHistory(p) {
 
     $$('#fb-body .file-row[data-filepath]').forEach(row => {
       const fp = row.getAttribute('data-filepath');
-      // Try matching with the path as-is, or with directory prefix
       const h = history[fp] || history[p === '.' ? fp : p + '/' + fp.split('/').pop()];
       if (h) {
         const msgEl = row.querySelector('.file-msg');
@@ -612,16 +816,12 @@ async function loadFileHistory(p) {
   } catch {}
 }
 
-/* ═══ BROWSE AT COMMIT (TIME TRAVEL) ═══ */
+/* ═══ BROWSE AT BACKUP (TIME TRAVEL) ═══ */
 let timeTravelHash = null;
 
 function browseAtCommit(hash) {
   timeTravelHash = hash;
-  // Switch to Code tab
-  $$('.nav-item').forEach(b => b.classList.remove('active'));
-  $$('.nav-item').forEach(b => { if (b.dataset.tab === 'files') b.classList.add('active'); });
-  $('#page-title').textContent = 'Code';
-  ['overview', 'commits', 'files', 'diff'].forEach(id => $('#tab-' + id).classList.toggle('hidden', id !== 'files'));
+  switchTab('browse');
   loadFilesAtCommit(hash, '');
 }
 
@@ -635,10 +835,9 @@ async function loadFilesAtCommit(hash, dir) {
   const files = await api('files-at', 'hash=' + encodeURIComponent(hash) + '&path=' + encodeURIComponent(dir));
   if (files.error) { $('#fb-body').innerHTML = `<div class="empty">${esc(files.error)}</div>`; return; }
 
-  // Time travel indicator bar
   const ttBar = `<div class="time-travel-bar">
-    📌 Browsing at snapshot <span class="tt-hash">${short}</span>
-    <button class="btn btn-ghost" onclick="exitTimeTravel()">✕ Exit</button>
+    Browsing at backup <span class="tt-hash">${short}</span>
+    <button class="btn btn-ghost" onclick="exitTimeTravel()">&#10005; Exit</button>
   </div>`;
 
   // Breadcrumb
@@ -660,14 +859,14 @@ async function loadFilesAtCommit(hash, dir) {
   if (dir) {
     const parent = dir.split('/').slice(0, -1).join('/');
     rows.push(`<div class="file-row" onclick="loadFilesAtCommit('${hash}','${parent.replace(/'/g, "\\'")}')">
-      <span class="file-icon">📁</span><span class="file-name is-dir">..</span>
+      <span class="file-icon">&#128193;</span><span class="file-name is-dir">..</span>
       <span class="file-msg"></span><span class="file-time"></span></div>`);
   }
   files.forEach(f => {
     const safePath = f.path.replace(/'/g, "\\'");
     if (f.type === 'dir') {
       rows.push(`<div class="file-row" onclick="loadFilesAtCommit('${hash}','${safePath}')">
-        <span class="file-icon">📁</span><span class="file-name is-dir">${esc(f.name)}</span>
+        <span class="file-icon">&#128193;</span><span class="file-name is-dir">${esc(f.name)}</span>
         <span class="file-msg"></span><span class="file-time"></span></div>`);
     } else {
       rows.push(`<div class="file-row" onclick="viewFileAtCommit('${hash}','${safePath}')">
@@ -721,13 +920,13 @@ async function viewFileAtCommit(hash, p) {
 
 function fIcon(n) {
   const e = n.split('.').pop().toLowerCase();
-  return { md:'📝', json:'📋', js:'📜', ts:'📜', py:'🐍', yml:'⚙️', yaml:'⚙️', env:'🔒', sh:'⚙️', css:'🎨', html:'🌐' }[e] || '📄';
+  return { md:'&#128221;', json:'&#128203;', js:'&#128220;', ts:'&#128220;', py:'&#128013;', yml:'&#9881;', yaml:'&#9881;', env:'&#128274;', sh:'&#9881;', css:'&#127912;', html:'&#127760;' }[e] || '&#128196;';
 }
 
 async function viewFile(p) {
   const data = await api('file', 'path=' + encodeURIComponent(p));
   if (data.error) { $('#file-viewer').innerHTML = `<div class="box"><div class="box-body-pad empty">${esc(data.error)}</div></div>`; return; }
-  if (data.binary) { $('#file-viewer').innerHTML = `<div class="box"><div class="fv-header"><span class="fv-path">${esc(p)}</span></div><div class="box-body-pad empty">Binary file · ${fmtSize(data.size)}</div></div>`; return; }
+  if (data.binary) { $('#file-viewer').innerHTML = `<div class="box"><div class="fv-header"><span class="fv-path">${esc(p)}</span></div><div class="box-body-pad empty">Binary file &middot; ${fmtSize(data.size)}</div></div>`; return; }
 
   const close = `<button class="fv-close" onclick="$('#file-viewer').innerHTML=''" title="Close">&#10005;</button>`;
   const isMd = p.endsWith('.md');
@@ -739,7 +938,6 @@ async function viewFile(p) {
   if (isMd) {
     body = `<div class="md-render">${renderMarkdown(data.content)}</div>`;
   } else {
-    // Line numbers + syntax highlighting
     const tableRows = lines.map((line, i) => {
       const num = i + 1;
       const highlighted = highlight(line, lang);
@@ -769,17 +967,6 @@ function highlightLine(num) {
 }
 
 
-/* ═══ DIFF ═══ */
-async function loadDiff() {
-  const data = await api('diff');
-  if (!data.diff || !data.diff.trim()) {
-    $('#diff-body').innerHTML = '<div class="empty">No uncommitted changes</div>';
-    return;
-  }
-  $('#diff-body').innerHTML = renderDiffSections(data.diff);
-}
-
-
 /* ═══ MODAL ═══ */
 function showModal(html) {
   $('#modal').innerHTML = html;
@@ -796,8 +983,8 @@ function closeModal() {
 function confirmRestore(hash) {
   const short = hash.substring(0, 7);
   showModal(`
-    <h3>Restore to snapshot</h3>
-    <p>This will revert all files to snapshot <span class="modal-hash">${short}</span> and create a new snapshot. Your current state will still be in history.</p>
+    <h3>Restore to backup</h3>
+    <p>This will revert all files to backup <span class="modal-hash">${short}</span> and create a new backup. Your current state will still be in history.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
       <button class="btn btn-danger" onclick="doRestore('${hash}')">Restore</button>
@@ -812,10 +999,9 @@ async function doRestore(hash) {
   try {
     const r = await api('restore', 'hash=' + hash);
     if (r.error) { toast('Error: ' + r.error); return; }
-    await loadOverview();
-    toast('Restored to ' + short + '. New snapshot created.', true);
-    // Go back to commits list to see the new restore commit
-    loadCommits();
+    await loadDashboard();
+    toast('Restored to ' + short + '. New backup created.', true);
+    loadHistory();
   } catch (e) { toast('Restore failed: ' + e.message); }
 }
 
@@ -837,27 +1023,27 @@ function toggleCompareMode() {
     toggle.classList.add('btn-danger');
     toggle.classList.remove('btn-ghost');
     bar.classList.remove('hidden');
-    bar.innerHTML = 'Select the <strong>base</strong> commit...';
+    bar.innerHTML = 'Select the <strong>base</strong> backup...';
     result.classList.add('hidden');
-    $('#commits-body').classList.add('compare-mode');
+    $('#history-body').classList.add('compare-mode');
   } else {
     toggle.textContent = 'Compare';
     toggle.classList.remove('btn-danger');
     toggle.classList.add('btn-ghost');
     bar.classList.add('hidden');
     result.classList.add('hidden');
-    $('#commits-body').classList.remove('compare-mode');
-    $$('#commits-body .commit-row.selected').forEach(r => r.classList.remove('selected'));
+    $('#history-body').classList.remove('compare-mode');
+    $$('#history-body .commit-row.selected').forEach(r => r.classList.remove('selected'));
   }
 }
 
 function onCompareClick(hash, el) {
-  if (!compareMode) { showCommitDetail(hash); return; }
+  if (!compareMode) { showBackupDetail(hash); return; }
 
   if (!compareFrom) {
     compareFrom = hash;
     el.classList.add('selected');
-    $('#compare-bar').innerHTML = `Base: <span class="commit-hash">${hash.substring(0, 7)}</span> — now select the <strong>target</strong> commit`;
+    $('#compare-bar').innerHTML = `Base: <span class="commit-hash">${hash.substring(0, 7)}</span> &mdash; now select the <strong>target</strong> backup`;
   } else if (!compareTo && hash !== compareFrom) {
     compareTo = hash;
     el.classList.add('selected');
@@ -869,7 +1055,7 @@ async function runCompare() {
   const bar = $('#compare-bar');
   const fromShort = compareFrom.substring(0, 7);
   const toShort = compareTo.substring(0, 7);
-  bar.innerHTML = `Comparing <span class="commit-hash">${fromShort}</span> → <span class="commit-hash">${toShort}</span> <button class="btn btn-ghost btn-sm" onclick="toggleCompareMode()" style="margin-left:auto">Clear</button>`;
+  bar.innerHTML = `Comparing <span class="commit-hash">${fromShort}</span> &rarr; <span class="commit-hash">${toShort}</span> <button class="btn btn-ghost btn-sm" onclick="toggleCompareMode()" style="margin-left:auto">Clear</button>`;
 
   const result = $('#compare-result');
   result.classList.remove('hidden');
@@ -885,19 +1071,18 @@ async function runCompare() {
 }
 
 /* ═══ ACTIONS ═══ */
-async function refresh() { await loadOverview(); toast('Refreshed', true); }
+async function refresh() { await loadDashboard(); toast('Refreshed', true); }
 
 function takeSnap() {
   showModal(`
-    <h3>Create snapshot</h3>
-    <p>Give this snapshot a name, or leave empty for auto-generated.</p>
+    <h3>Create backup</h3>
+    <p>Give this backup a name, or leave empty for auto-generated.</p>
     <input class="modal-input" id="snap-msg" type="text" placeholder="e.g. before risky deploy" autofocus>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="doSnap()">Snapshot</button>
+      <button class="btn btn-primary" onclick="doSnap()">Backup</button>
     </div>
   `);
-  // Focus the input after modal renders
   setTimeout(() => { const el = $('#snap-msg'); if (el) el.focus(); }, 50);
 }
 
@@ -906,16 +1091,16 @@ async function doSnap() {
   const msg = msgEl ? msgEl.value.trim() : '';
   closeModal();
   const btn = document.querySelector('.topbar .btn-primary');
-  if (btn) { btn.innerHTML = '&#8987; Snapping...'; btn.disabled = true; }
+  if (btn) { btn.innerHTML = '&#8987; Backing up...'; btn.disabled = true; }
   try {
     const q = msg ? 'message=' + encodeURIComponent(msg) : '';
     const r = await api('snap', q);
-    await loadOverview();
-    toast(r.hash ? `Snapshot ${r.hash.substring(0, 7)} created` : 'Nothing to commit', true);
+    await loadDashboard();
+    toast(r.hash ? `Backup ${r.hash.substring(0, 7)} created` : 'Nothing to back up', true);
   } catch (e) { toast('Error: ' + e.message); }
-  if (btn) { btn.innerHTML = '&#10010; Snapshot'; btn.disabled = false; }
+  if (btn) { btn.innerHTML = '&#10010; Backup now'; btn.disabled = false; }
 }
 
 /* Init */
-loadOverview();
-setInterval(loadOverview, 30000);
+loadDashboard();
+setInterval(loadDashboard, 30000);

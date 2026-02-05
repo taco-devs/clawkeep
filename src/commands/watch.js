@@ -6,6 +6,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const chokidar = require('chokidar');
 const ClawGit = require('../core/git');
+const BackupManager = require('../core/backup');
 
 const PID_FILE = '.clawkeep/watch.pid';
 
@@ -137,6 +138,17 @@ function startWatcher(claw, dir, interval, autoPush, quiet) {
             if (!quiet) console.log(`  ${chalk.dim(now)} ${chalk.yellow('⚠')} ${chalk.dim('push failed: ' + pushErr.message)}`);
           }
         }
+
+        // Auto-sync to backup target
+        if (config.backup && config.backup.autoSync && config.backup.target) {
+          try {
+            const bm = new BackupManager(claw);
+            await bm.sync();
+            if (!quiet) console.log(`  ${chalk.dim(now)} ${chalk.blue('↑')} ${chalk.dim('synced to ' + (config.backup.targetLabel || config.backup.target))}`);
+          } catch (syncErr) {
+            if (!quiet) console.log(`  ${chalk.dim(now)} ${chalk.yellow('⚠')} ${chalk.dim('sync failed: ' + syncErr.message)}`);
+          }
+        }
       }
     } catch (err) {
       if (!quiet) console.error(chalk.red(`  Error: ${err.message}`));
@@ -157,7 +169,7 @@ function startWatcher(claw, dir, interval, autoPush, quiet) {
   const cleanup = () => {
     if (!quiet) {
       console.log('');
-      console.log(chalk.dim(`  Stopped. ${snapCount} snapshot(s) taken this session.`));
+      console.log(chalk.dim(`  Stopped. ${snapCount} backup(s) taken this session.`));
     }
     try { fs.unlinkSync(pidPath); } catch {}
     watcher.close();

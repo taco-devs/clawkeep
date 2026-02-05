@@ -6,7 +6,9 @@ const chalk = require('chalk');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const os = require('os');
 const ClawGit = require('../core/git');
+const BackupManager = require('../core/backup');
 
 const PID_FILE = '.clawkeep/ui.pid';
 const TOKEN_FILE = '.clawkeep/ui.token';
@@ -117,6 +119,58 @@ function startServer(claw, dir, port, token, opts) {
     'file-history': async (p) => await claw.fileHistory(p.get('path') || '.'),
     'files-at': async (p) => await claw.listFilesAtCommit(p.get('hash') || 'HEAD', p.get('path') || ''),
     'file-at': async (p) => await claw.showFileAtCommit(p.get('hash') || 'HEAD', p.get('path')),
+    'backup/status': async () => {
+      const bm = new BackupManager(claw);
+      return bm.getConfig();
+    },
+    'backup/set-target': async (p) => {
+      const bm = new BackupManager(claw);
+      const type = p.get('type');
+      const options = JSON.parse(p.get('options') || '{}');
+      return await bm.setTarget(type, options);
+    },
+    'backup/sync': async () => {
+      const bm = new BackupManager(claw);
+      return await bm.sync();
+    },
+    'backup/test': async () => {
+      const bm = new BackupManager(claw);
+      return await bm.test();
+    },
+    'backup/watch-status': async () => {
+      const watchPid = path.join(dir, '.clawkeep/watch.pid');
+      if (!fs.existsSync(watchPid)) return { running: false };
+      const pid = parseInt(fs.readFileSync(watchPid, 'utf8'));
+      try { process.kill(pid, 0); return { running: true, pid }; }
+      catch { return { running: false }; }
+    },
+    'backup/repo-size': async () => {
+      return { size: claw.getRepoSize() };
+    },
+  };
+
+  // Special handler for export (streams file, not JSON)
+  const handleExport = async (params, req, res) => {
+    const password = params.get('password');
+    if (!password) {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: 'password required' }));
+      return;
+    }
+    try {
+      const { exportEncrypted } = require('../core/crypto');
+      const tmpPath = path.join(os.tmpdir(), `clawkeep-export-${Date.now()}.enc`);
+      await exportEncrypted(dir, tmpPath, password);
+      res.setHeader('Content-Disposition', 'attachment; filename="backup.clawkeep.enc"');
+      res.setHeader('Content-Type', 'application/octet-stream');
+      const stream = fs.createReadStream(tmpPath);
+      stream.pipe(res);
+      stream.on('end', () => { setTimeout(() => { try { fs.unlinkSync(tmpPath); } catch {} }, 10000); });
+    } catch (err) {
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: err.message }));
+    }
   };
 
   const server = http.createServer(async (req, res) => {
@@ -139,6 +193,10 @@ function startServer(claw, dir, port, token, opts) {
         return;
       }
       const route = url.pathname.replace('/api/', '');
+      // Special routes that handle their own response
+      if (route === 'backup/export') {
+        return handleExport(url.searchParams, req, res);
+      }
       res.setHeader('Content-Type', 'application/json');
       try {
         const handler = apiHandlers[route];

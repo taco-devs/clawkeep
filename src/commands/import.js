@@ -26,7 +26,7 @@ module.exports = async function importCmd(file, opts) {
     console.log('');
     console.log(`  📂 Restored to: ${chalk.cyan(result.path)}`);
     console.log(chalk.dim('  Your full history and memory are restored.'));
-    console.log(chalk.dim('  Run `clawkeep log` to see snapshot history.'));
+    console.log(chalk.dim('  Run `clawkeep log` to see backup history.'));
   } catch (err) {
     spinner.fail('Import failed');
     if (err.message.includes('incorrect header check') || err.message.includes('bad decrypt')) {

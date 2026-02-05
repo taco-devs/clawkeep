@@ -156,7 +156,7 @@ class ClawGit {
     return result;
   }
 
-  /** Get snapshot history */
+  /** Get backup history */
   async log(limit = 20) {
     try {
       const result = await this.git.log({ maxCount: limit });
@@ -353,6 +353,24 @@ class ClawGit {
     await this.git.pull('origin', 'main', { '--rebase': 'true' });
   }
 
+  /** Get total repo size (git directory) */
+  getRepoSize() {
+    const gitDir = path.join(this.dir, '.git');
+    let total = 0;
+    const walk = (d) => {
+      try {
+        const entries = fs.readdirSync(d, { withFileTypes: true });
+        for (const e of entries) {
+          const p = path.join(d, e.name);
+          if (e.isDirectory()) walk(p);
+          else total += fs.statSync(p).size;
+        }
+      } catch {}
+    };
+    walk(gitDir);
+    return total;
+  }
+
   /** Load .clawkeepignore patterns (parsed, no comments/blanks) */
   _loadIgnorePatterns() {
     const ignorePath = path.join(this.dir, '.clawkeepignore');
@@ -401,7 +419,7 @@ class ClawGit {
     if (n === 1) {
       return path.basename(status.files[0].path) + ' updated';
     }
-    return 'snapshot — ' + n + ' files changed';
+    return 'backup — ' + n + ' files changed';
   }
 }
 

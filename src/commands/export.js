@@ -33,7 +33,7 @@ module.exports = async function exportCmd(opts) {
 
     // Take a snap first to capture latest state
     spinner.text = 'Capturing latest state...';
-    await claw.snap('export: pre-export snapshot');
+    await claw.snap('export: pre-export backup');
 
     // Export
     spinner.text = 'Encrypting archive...';

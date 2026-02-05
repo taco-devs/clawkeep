@@ -36,8 +36,8 @@ program
 // snap
 program
   .command('snap')
-  .description('Snapshot current state (commit all changes)')
-  .option('-m, --message <msg>', 'Custom snapshot message')
+  .description('Back up current state (save all changes)')
+  .option('-m, --message <msg>', 'Custom backup message')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('-q, --quiet', 'Minimal output', false)
   .action((opts) => require('../src/commands/snap')(opts));
@@ -45,7 +45,7 @@ program
 // diff
 program
   .command('diff')
-  .description('Show changes since last snapshot')
+  .description('Show changes since last backup')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--stat', 'Show file-level summary only', false)
   .action((opts) => require('../src/commands/diff')(opts));
@@ -53,7 +53,7 @@ program
 // log
 program
   .command('log')
-  .description('Show snapshot history timeline')
+  .description('Show backup history timeline')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('-n, --limit <n>', 'Number of entries', '20')
   .option('--oneline', 'Compact single-line format', false)
@@ -63,7 +63,7 @@ program
 // restore
 program
   .command('restore [ref]')
-  .description('Restore to a specific snapshot (by hash, HEAD~N, or interactive)')
+  .description('Restore to a specific backup point')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--hard', 'Discard current changes (destructive)', false)
   .action((ref, opts) => require('../src/commands/restore')(ref, opts));
@@ -71,7 +71,7 @@ program
 // push
 program
   .command('push')
-  .description('Push snapshots to remote repository')
+  .description('Push backups to remote')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('-r, --remote <url>', 'Set remote repository URL')
   .action((opts) => require('../src/commands/push')(opts));
@@ -79,14 +79,25 @@ program
 // pull
 program
   .command('pull')
-  .description('Pull latest snapshots from remote')
+  .description('Pull latest backups from remote')
   .option('-d, --dir <path>', 'Target directory', '.')
   .action((opts) => require('../src/commands/pull')(opts));
+
+// backup
+program
+  .command('backup [subcommand] [path]')
+  .description('Manage backup target (local, cloud, s3, git)')
+  .option('-d, --dir <path>', 'Target directory', '.')
+  .action((subcommand, targetPath, opts) => {
+    opts.args = targetPath ? [targetPath] : [];
+    opts.path = targetPath;
+    require('../src/commands/backup')(subcommand, opts.args, opts);
+  });
 
 // watch
 program
   .command('watch')
-  .description('Watch for file changes and auto-snapshot')
+  .description('Watch for file changes and auto-backup')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--interval <ms>', 'Debounce interval in ms', '5000')
   .option('--push', 'Auto-push after each snap', false)

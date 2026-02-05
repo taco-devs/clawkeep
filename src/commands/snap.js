@@ -7,7 +7,7 @@ const ClawGit = require('../core/git');
 
 module.exports = async function snap(opts) {
   const dir = path.resolve(opts.dir || '.');
-  const spinner = opts.quiet ? null : ora('Snapping...').start();
+  const spinner = opts.quiet ? null : ora('Backing up...').start();
 
   try {
     const claw = new ClawGit(dir);
@@ -45,7 +45,7 @@ module.exports = async function snap(opts) {
       console.log(result.hash.substring(0, 8));
     }
   } catch (err) {
-    spinner?.fail('Snapshot failed');
+    spinner?.fail('Backup failed');
     console.error(chalk.red('  ' + err.message));
     process.exit(1);
   }

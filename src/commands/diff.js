@@ -18,7 +18,7 @@ module.exports = async function diff(opts) {
     const result = await claw.diff(opts.stat);
 
     if (!result || result.trim() === '') {
-      console.log(chalk.dim('No changes since last snapshot.'));
+      console.log(chalk.dim('No changes since last backup.'));
       return;
     }
 

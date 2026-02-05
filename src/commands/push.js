@@ -29,7 +29,7 @@ module.exports = async function push(opts) {
       process.exit(1);
     }
 
-    spinner.text = 'Pushing snapshots...';
+    spinner.text = 'Pushing backups...';
     await claw.push();
 
     spinner.succeed('Pushed to remote!');

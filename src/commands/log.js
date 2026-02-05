@@ -18,7 +18,7 @@ module.exports = async function log(opts) {
     const entries = await claw.log(parseInt(opts.limit) || 20);
 
     if (entries.length === 0) {
-      console.log(chalk.dim('No snapshots yet.'));
+      console.log(chalk.dim('No backups yet.'));
       return;
     }
 
@@ -29,7 +29,7 @@ module.exports = async function log(opts) {
     }
 
     console.log('');
-    console.log(chalk.bold(`  📋 ${entries.length} snapshot${entries.length > 1 ? 's' : ''}`));
+    console.log(chalk.bold(`  📋 ${entries.length} backup${entries.length > 1 ? 's' : ''}`));
     console.log('');
 
     for (let i = 0; i < entries.length; i++) {

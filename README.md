@@ -5,7 +5,7 @@
 <h1 align="center">🐾 ClawKeep</h1>
 
 <p align="center">
-  <strong>Git-powered time travel for your files.</strong><br>
+  <strong>Time-travel backups for AI agents and everything else.</strong><br>
   <sub>Every change tracked. Every version recoverable. Set it and forget it.</sub>
 </p>
 
@@ -27,7 +27,7 @@ You reach for a backup. All you have is a zip from three days ago.
 
 ## The Solution
 
-ClawKeep gives your files **full version history**. Every change is tracked. Every state is recoverable. Built on git, but you never touch git.
+ClawKeep gives your files **full version history with backup targets**. Every change is tracked. Every state is recoverable. Back up to a local path, git remote, or (soon) the cloud. Built on git, but you never touch git.
 
 ```
 clawkeep init       →  start tracking
@@ -51,7 +51,7 @@ clawkeep init
 ✔ ClawKeep initialized!
   🐾 Directory is now version-controlled
   Tracked     42 files
-  Snapshot    a8f3c2d1
+  Backup      a8f3c2d1
 ```
 
 ```bash
@@ -67,34 +67,66 @@ Done. Every file change is now automatically versioned.
 |---|---|
 | `clawkeep init` | Start tracking a directory |
 | `clawkeep watch` | Auto-backup on file changes. `--daemon` for background mode |
-| `clawkeep snap` | Manual snapshot with optional `-m "message"` |
-| `clawkeep log` | Browse your version timeline |
-| `clawkeep restore <ref>` | Time-travel to any snapshot |
-| `clawkeep diff` | See what changed since last snapshot |
-| `clawkeep push` | Sync to GitHub, GitLab, or any git remote |
+| `clawkeep snap` | Manual backup with optional `-m "message"` |
+| `clawkeep log` | Browse your backup timeline |
+| `clawkeep restore <ref>` | Time-travel to any backup |
+| `clawkeep diff` | See what changed since last backup |
+| `clawkeep backup` | Manage backup targets (local, git, cloud, S3) |
+| `clawkeep push` | Sync to remote |
 | `clawkeep pull` | Pull latest from remote |
 | `clawkeep export` | AES-256 encrypted portable archive |
 | `clawkeep import` | Restore from encrypted archive |
 | `clawkeep status` | Show tracking stats |
 | `clawkeep ui` | Launch the web dashboard |
 
+## Backup Targets
+
+Choose where your data goes. Configure once, sync automatically.
+
+```bash
+# Mirror to a local path (NAS, external drive, etc.)
+clawkeep backup local /mnt/nas/backups/my-project
+
+# Push to a git remote
+clawkeep backup git git@github.com:you/agent-backups.git
+
+# Check backup status
+clawkeep backup status
+
+# Sync now
+clawkeep backup sync
+
+# Test connection
+clawkeep backup test
+```
+
+| Target | Status | Description |
+|---|---|---|
+| **Local path** | ✅ Available | Mirror to any local folder, NAS, or mounted drive |
+| **Git remote** | ✅ Available | Push to GitHub, GitLab, or any git remote |
+| **ClawKeep Cloud** | 🔜 Coming soon | Managed backup with web dashboard at clawkeep.com |
+| **S3 / R2** | 🔜 Coming soon | Object storage for large workspaces |
+
 ## Web Dashboard
 
-A clean, dark-themed dashboard to browse your version history visually.
+A clean, dark-themed dashboard to manage your backups visually.
 
 ```bash
 clawkeep ui --daemon --port 3333
 ```
 
-**What you get:**
-- 📋 **Timeline** — every snapshot with expandable diffs
-- 📁 **File browser** — browse files at any point in history
-- 🔀 **Compare** — select any two snapshots and see exactly what changed
-- ⏪ **One-click restore** — revert to any snapshot from the UI
-- ✏️ **Named snapshots** — label important checkpoints
-- 🎨 **Syntax highlighting** — JS, Python, Go, Rust, JSON, YAML, CSS, HTML
+**Four tabs, everything you need:**
 
-Token-based auth. Runs as a background daemon. Auto-refreshes.
+- **◉ Dashboard** — Protection status, recent changes, pending unsaved files, quick stats
+- **↻ History** — Full backup timeline with expandable diffs, compare any two backups side-by-side
+- **☁ Backup** — Configure backup targets, sync, test connections, download encrypted exports
+- **≡ Browse** — File browser with time-travel — view any file at any point in history
+
+**Also includes:**
+- 🎨 Syntax highlighting for JS, Python, Go, Rust, JSON, YAML, CSS, HTML
+- ✏️ Named backups from the UI
+- ⏪ One-click restore to any backup
+- 🔐 Token-based auth, runs as a background daemon
 
 ## Framework Integrations
 
@@ -116,9 +148,10 @@ ClawKeep works with any directory, but it's especially useful for AI agent frame
 ClawKeep ships with a [SKILL.md](SKILL.md) that any AI agent can read and follow. Drop it into your agent's skills directory and it will know how to:
 
 - Initialize ClawKeep on its own workspace
-- Run watch mode or periodic snapshots via heartbeat
+- Run watch mode or periodic backups via heartbeat
 - Restore to previous versions when something goes wrong
-- Take named snapshots before risky operations
+- Take named backups before risky operations
+- Configure backup targets for offsite protection
 
 See [SKILL.md](SKILL.md) for the full agent-readable integration guide.
 
@@ -139,7 +172,7 @@ Add your own patterns. They're automatically synced to `.gitignore` — you neve
 
 ## Watch Mode
 
-The killer feature. Background daemon that auto-snapshots on file changes:
+The killer feature. Background daemon that auto-backs-up on file changes:
 
 ```bash
 # Foreground (see live output)
@@ -151,7 +184,7 @@ clawkeep watch --daemon
 # Stop the daemon
 clawkeep watch --stop
 
-# Auto-push to remote after each snap
+# Auto-push to remote after each backup
 clawkeep watch --daemon --push
 ```
 
@@ -165,21 +198,21 @@ Go back to any point in time. Your current state is preserved in history — not
 # See the timeline
 clawkeep log
 
-# Restore to a specific snapshot
+# Restore to a specific backup
 clawkeep restore abc123f
 
-# Restore to 3 snapshots ago
+# Restore to 3 backups ago
 clawkeep restore HEAD~3
 ```
 
-Restores are **non-destructive** — ClawKeep checks out the old state and commits it as a new snapshot. Your full history is always intact.
+Restores are **non-destructive** — ClawKeep checks out the old state and creates a new backup. Your full history is always intact.
 
 ## Compare
 
 See exactly what changed between any two points in time:
 
-- **Dashboard:** Click two commits in the timeline to compare
-- **CLI:** `clawkeep diff` shows changes since last snapshot
+- **Dashboard:** Click "Compare" in History tab, select two backups
+- **CLI:** `clawkeep diff` shows changes since last backup
 - **API:** `GET /api/compare?from=abc123&to=def456`
 
 ## Encrypted Export
@@ -193,7 +226,7 @@ clawkeep export -p "strong-password"
 clawkeep import backup.clawkeep.enc -p "strong-password"
 ```
 
-Or use the `CLAWKEEP_PASSWORD` environment variable for automated exports.
+Or download an encrypted export directly from the web dashboard's Backup tab.
 
 ## Programmatic API
 
@@ -203,13 +236,13 @@ const { ClawGit } = require('clawkeep');
 const claw = new ClawGit('/path/to/project');
 await claw.init();
 
-// Snapshot
+// Backup
 const snap = await claw.snap('pre-deploy checkpoint');
 
 // History
 const history = await claw.log(10);
 
-// Diff between any two commits
+// Diff between any two backups
 const changes = await claw.diffBetween('abc123', 'def456');
 
 // Restore
@@ -243,6 +276,7 @@ Or you could run `clawkeep watch --daemon` and never think about it again.
 | Ignore patterns | Manual `.gitignore` | Auto-managed `.clawkeepignore` |
 | Time travel | `git checkout` / `git stash` | `clawkeep restore` |
 | Visual history | External GUI needed | Built-in web dashboard |
+| Backup targets | Manual remote config | `clawkeep backup local /path` |
 | Encrypted export | Not built-in | `clawkeep export` |
 | Learning curve | Steep | Three commands |
 
@@ -251,9 +285,10 @@ ClawKeep *is* git underneath. You get all the power with none of the ceremony.
 ## Roadmap
 
 - [ ] `clawkeep.com` — hosted dashboard & remote storage
-- [ ] Webhooks on file changes
 - [ ] S3/R2 backend support
+- [ ] Webhooks on file changes
 - [ ] Multi-directory sync
+- [ ] Team sharing & access control
 
 ## License
 

@@ -18,10 +18,10 @@ module.exports = async function restore(ref, opts) {
     }
 
     if (!ref) {
-      spinner.fail('Please specify a snapshot reference (hash or HEAD~N).');
+      spinner.fail('Please specify a backup reference (hash or HEAD~N).');
       console.log(chalk.dim('  Example: clawkeep restore abc123'));
       console.log(chalk.dim('  Example: clawkeep restore HEAD~3'));
-      console.log(chalk.dim('  Run `clawkeep log` to see available snapshots.'));
+      console.log(chalk.dim('  Run `clawkeep log` to see available backups.'));
       process.exit(1);
     }
 
@@ -31,8 +31,8 @@ module.exports = async function restore(ref, opts) {
       spinner.succeed(`Hard restore to ${chalk.cyan(ref.substring(0, 8))}`);
       console.log(chalk.yellow('  ⚠️  Current changes were discarded.'));
     } else {
-      spinner.succeed(`Restored to ${chalk.cyan(ref.substring(0, 8))} (new snapshot created)`);
-      console.log(chalk.dim('  Your history is preserved. The restore is a new snapshot.'));
+      spinner.succeed(`Restored to ${chalk.cyan(ref.substring(0, 8))} (new backup created)`);
+      console.log(chalk.dim('  Your history is preserved. The restore is a new backup.'));
     }
   } catch (err) {
     spinner.fail('Restore failed');

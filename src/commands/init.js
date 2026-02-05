@@ -20,23 +20,23 @@ module.exports = async function init(opts) {
 
     const config = await claw.init();
 
-    // Take initial snapshot
-    spinner.text = 'Taking initial snapshot...';
-    const result = await claw.snap('initial snapshot');
+    // Take initial backup
+    spinner.text = 'Taking initial backup...';
+    const result = await claw.snap('initial backup');
 
     spinner.succeed(chalk.bold('ClawKeep initialized!'));
     console.log('');
-    console.log(chalk.bold.cyan('  🐾 Directory is now version-controlled'));
+    console.log(chalk.bold.cyan('  🐾 Directory is now backed up'));
     console.log('');
     if (result) {
       console.log(`  ${chalk.dim('Tracked')}     ${chalk.white(result.summary.changed + ' files')}`);
-      console.log(`  ${chalk.dim('Snapshot')}    ${chalk.yellow(result.hash.substring(0, 8))}`);
+      console.log(`  ${chalk.dim('Backup')}      ${chalk.yellow(result.hash.substring(0, 8))}`);
     }
     console.log('');
     console.log(chalk.dim('  Next steps:'));
     console.log(chalk.dim('  $ clawkeep watch          Auto-backup on file changes'));
-    console.log(chalk.dim('  $ clawkeep push -r <url>  Sync to remote'));
-    console.log(chalk.dim('  $ clawkeep snap -m "..."  Manual snapshot'));
+    console.log(chalk.dim('  $ clawkeep backup local   Set up backup target'));
+    console.log(chalk.dim('  $ clawkeep snap -m "..."  Manual backup'));
     console.log('');
   } catch (err) {
     spinner.fail('Failed to initialize');

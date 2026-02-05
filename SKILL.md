@@ -160,6 +160,29 @@ clawkeep push -d /path/to/workspace -r https://github.com/you/agent-backups.git
 clawkeep watch --daemon --push -d /path/to/workspace
 ```
 
+## Backup Targets
+
+Configure where your backups are synced to for offsite protection:
+
+```bash
+# Mirror to a local path (NAS, external drive, etc.)
+clawkeep backup local /mnt/nas/backups/my-workspace -d /path/to/workspace
+
+# Push to a git remote
+clawkeep backup git git@github.com:you/agent-backups.git -d /path/to/workspace
+
+# Check backup status
+clawkeep backup status -d /path/to/workspace
+
+# Manual sync
+clawkeep backup sync -d /path/to/workspace
+
+# Test connection
+clawkeep backup test -d /path/to/workspace
+```
+
+Available targets: `local` (folder/NAS), `git` (remote repo). Cloud and S3 coming soon.
+
 ## Encrypted Export
 
 Create a portable encrypted backup:
@@ -167,6 +190,8 @@ Create a portable encrypted backup:
 ```bash
 CLAWKEEP_PASSWORD="strong-password" clawkeep export -d /path/to/workspace
 ```
+
+Or download encrypted exports directly from the web dashboard's **Backup** tab.
 
 ## Programmatic Use (Node.js)
 
@@ -199,10 +224,13 @@ const oldContent = await claw.showFileAtCommit('abc123', 'MEMORY.md');
 | Initialize | `clawkeep init -d <dir>` |
 | Auto-backup daemon | `clawkeep watch --daemon -d <dir>` |
 | Stop daemon | `clawkeep watch --stop -d <dir>` |
-| Manual snapshot | `clawkeep snap -d <dir> -m "message"` |
+| Manual backup | `clawkeep snap -d <dir> -m "message"` |
 | View history | `clawkeep log -d <dir>` |
 | Restore | `clawkeep restore <hash> -d <dir>` |
 | See changes | `clawkeep diff -d <dir>` |
+| Set backup target | `clawkeep backup local <path> -d <dir>` |
+| Sync to target | `clawkeep backup sync -d <dir>` |
+| Backup status | `clawkeep backup status -d <dir>` |
 | Launch dashboard | `clawkeep ui --daemon -d <dir> --port 3333` |
 | Stop dashboard | `clawkeep ui --stop -d <dir>` |
 | Push to remote | `clawkeep push -d <dir>` |
