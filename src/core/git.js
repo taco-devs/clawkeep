@@ -6,7 +6,7 @@ const fs = require('fs');
 
 /**
  * Core git operations for ClawKeep.
- * Wraps simple-git with agent-friendly semantics.
+ * Wraps simple-git for versioned backups.
  * Linear history only — no branches.
  */
 class ClawGit {
@@ -33,29 +33,20 @@ class ClawGit {
     const isRepo = await this.git.checkIsRepo().catch(() => false);
     if (!isRepo) {
       await this.git.init();
-      // Ensure we're on 'main' branch
       await this.git.checkout(['-b', 'main']).catch(() => {});
     }
 
     // Set git config
-    await this.git.addConfig('user.name', config.agentName || 'ClawKeep');
-    await this.git.addConfig('user.email', config.agentEmail || 'agent@clawkeep.com');
+    await this.git.addConfig('user.name', 'ClawKeep');
+    await this.git.addConfig('user.email', 'backup@clawkeep.com');
 
-    // Write config
+    // Write config — minimal, no agent semantics
     const clawConfig = {
       version: '0.1.0',
       createdAt: new Date().toISOString(),
-      framework: config.framework || 'unknown',
-      agentName: config.agentName || 'unknown',
-      trackSecrets: config.trackSecrets !== false,
       remote: config.remote || null,
       watchInterval: config.watchInterval || 5000,
       ignore: config.ignore || [],
-      stats: {
-        totalSnaps: 0,
-        firstSnap: null,
-        lastSnap: null,
-      },
     };
 
     fs.writeFileSync(
@@ -63,14 +54,49 @@ class ClawGit {
       JSON.stringify(clawConfig, null, 2)
     );
 
-    // Write default .clawkeepignore
+    // Write default .clawkeepignore with sensible defaults
     const ignorePath = path.join(this.dir, '.clawkeepignore');
     if (!fs.existsSync(ignorePath)) {
       fs.writeFileSync(
         ignorePath,
-        '# ClawKeep ignore file\n# Add patterns here to exclude files from tracking\n# Secrets are tracked by default (encrypted on export)\n\n# Example:\n# *.log\n# tmp/\n'
+        [
+          '# ClawKeep ignore — patterns here are synced to .gitignore',
+          '# Add anything you don\'t want versioned',
+          '',
+          '# Dependencies',
+          'node_modules/',
+          'vendor/',
+          '.venv/',
+          '__pycache__/',
+          '*.pyc',
+          '',
+          '# Build output',
+          'dist/',
+          'build/',
+          '.next/',
+          '',
+          '# Environment & secrets',
+          '.env',
+          '.env.*',
+          '*.pem',
+          '*.key',
+          '',
+          '# Logs & temp',
+          '*.log',
+          'tmp/',
+          '.cache/',
+          '',
+          '# ClawKeep internals',
+          '.clawkeep/ui.pid',
+          '.clawkeep/ui.token',
+          '.clawkeep/watch.pid',
+          '',
+        ].join('\n')
       );
     }
+
+    // Sync ignore patterns to .gitignore so git respects them
+    this._syncIgnore();
 
     return clawConfig;
   }
@@ -90,38 +116,19 @@ class ClawGit {
 
   /** Stage all changes and commit */
   async snap(message) {
-    // Load ignore patterns
-    const ignorePatterns = this._loadIgnorePatterns();
-    
-    // Stage everything
+    this._syncIgnore();
     await this.git.add('-A');
 
-    // Check if there are changes
     const status = await this.git.status();
     if (status.staged.length === 0 && status.files.length === 0) {
       return null;
     }
 
-    await this.git.add('-A');
-
-    // Generate smart message if none provided
     if (!message) {
-      message = this._smartMessage(status);
+      message = this._autoMessage(status);
     }
 
     const result = await this.git.commit(message);
-
-    // Update stats
-    const config = this.loadConfig();
-    if (config) {
-      config.stats = config.stats || {};
-      config.stats.totalSnaps = (config.stats.totalSnaps || 0) + 1;
-      config.stats.lastSnap = new Date().toISOString();
-      if (!config.stats.firstSnap) {
-        config.stats.firstSnap = config.stats.lastSnap;
-      }
-      this.saveConfig(config);
-    }
 
     return {
       hash: result.commit,
@@ -140,6 +147,7 @@ class ClawGit {
 
   /** Get diff since last snap */
   async diff(statOnly = false) {
+    this._syncIgnore();
     await this.git.add('-A');
     const args = ['--cached'];
     if (statOnly) args.push('--stat');
@@ -179,27 +187,25 @@ class ClawGit {
     };
   }
 
-  /** Get full stats */
+  /** Get full stats — computed from git log, no config dependency */
   async getStats() {
-    const config = this.loadConfig();
-    const stats = config?.stats || {};
-
     let totalCommits = 0;
+    let firstDate = null;
+    let lastDate = null;
     try {
       const log = await this.git.log();
       totalCommits = log.total;
+      if (log.latest) lastDate = log.latest.date;
+      if (log.all.length) firstDate = log.all[log.all.length - 1].date;
     } catch (e) {
       // no commits
     }
 
-    // Calculate days tracked
     let daysTracked = 0;
-    if (stats.firstSnap) {
-      const first = new Date(stats.firstSnap);
-      daysTracked = Math.ceil((Date.now() - first.getTime()) / (1000 * 60 * 60 * 24));
+    if (firstDate) {
+      daysTracked = Math.ceil((Date.now() - new Date(firstDate).getTime()) / (1000 * 60 * 60 * 24));
     }
 
-    // Count tracked files
     let trackedFiles = 0;
     try {
       const files = await this.git.raw(['ls-files']);
@@ -212,8 +218,8 @@ class ClawGit {
       totalSnaps: totalCommits,
       daysTracked,
       trackedFiles,
-      firstSnap: stats.firstSnap,
-      lastSnap: stats.lastSnap,
+      firstSnap: firstDate,
+      lastSnap: lastDate,
     };
   }
 
@@ -243,6 +249,15 @@ class ClawGit {
     }
   }
 
+  /** Get diff between any two commits */
+  async diffBetween(hash1, hash2) {
+    try {
+      return await this.git.diff([hash1, hash2]);
+    } catch (e) {
+      return '';
+    }
+  }
+
   /** Get last commit info for files in a directory */
   async fileHistory(dir) {
     try {
@@ -251,9 +266,9 @@ class ClawGit {
       const names = files.trim().split('\n').filter(Boolean).slice(0, 50);
       for (const f of names) {
         try {
-          const log = await this.git.log({ maxCount: 1, file: f, '--format': '%ai|%s' });
+          const log = await this.git.log({ maxCount: 1, file: f });
           if (log.latest) {
-            result[f] = { date: log.latest.date, message: log.latest.message };
+            result[f] = { hash: log.latest.hash, date: log.latest.date, message: log.latest.message };
           }
         } catch {}
       }
@@ -263,13 +278,45 @@ class ClawGit {
     }
   }
 
+  /** List files/dirs at a specific commit (for time-travel browsing) */
+  async listFilesAtCommit(hash, dir) {
+    try {
+      const treePath = dir ? hash + ':' + dir : hash;
+      const raw = await this.git.raw(['ls-tree', treePath]);
+      const lines = raw.trim().split('\n').filter(Boolean);
+      const entries = lines.map(line => {
+        // Format: <mode> <type> <hash>\t<name>
+        const [info, name] = line.split('\t');
+        const type = info.split(/\s+/)[1]; // 'tree' or 'blob'
+        const fullPath = dir ? dir + '/' + name : name;
+        return { name, type: type === 'tree' ? 'dir' : 'file', path: fullPath };
+      });
+      return entries.sort((a, b) => a.type !== b.type ? (a.type === 'dir' ? -1 : 1) : a.name.localeCompare(b.name));
+    } catch {
+      return [];
+    }
+  }
+
+  /** Get file content at a specific commit */
+  async showFileAtCommit(hash, filePath) {
+    try {
+      const content = await this.git.show([hash + ':' + filePath]);
+      return { path: filePath, content, binary: false };
+    } catch (e) {
+      if (e.message.includes('binary')) {
+        return { path: filePath, content: null, binary: true };
+      }
+      return null;
+    }
+  }
+
   /** Restore to a specific point */
   async restore(ref, hard = false) {
     if (hard) {
       await this.git.reset(['--hard', ref]);
     } else {
       await this.git.checkout(ref, ['--', '.']);
-      await this.snap(`⏪ restore: reverted to ${ref.substring(0, 8)}`);
+      await this.snap(`restore: reverted to ${ref.substring(0, 8)}`);
     }
   }
 
@@ -296,7 +343,6 @@ class ClawGit {
     try {
       await this.git.push('origin', 'main', ['--set-upstream']);
     } catch (e) {
-      // Try current branch if main doesn't exist
       const branch = await this.git.revparse(['--abbrev-ref', 'HEAD']);
       await this.git.push('origin', branch.trim(), ['--set-upstream']);
     }
@@ -307,7 +353,7 @@ class ClawGit {
     await this.git.pull('origin', 'main', { '--rebase': 'true' });
   }
 
-  /** Load .clawkeepignore patterns */
+  /** Load .clawkeepignore patterns (parsed, no comments/blanks) */
   _loadIgnorePatterns() {
     const ignorePath = path.join(this.dir, '.clawkeepignore');
     if (!fs.existsSync(ignorePath)) return [];
@@ -318,89 +364,44 @@ class ClawGit {
       .filter((l) => l && !l.startsWith('#'));
   }
 
-  /** Generate smart commit message from status */
-  _smartMessage(status) {
-    const files = status.files.map((f) => f.path);
-    
-    // Categorize changes
-    const categories = {
-      memory: [],
-      config: [],
-      soul: [],
-      workspace: [],
-      other: [],
-    };
+  /** Sync .clawkeepignore patterns into .gitignore (managed section) */
+  _syncIgnore() {
+    const patterns = this._loadIgnorePatterns();
+    if (!patterns.length) return;
 
-    for (const f of files) {
-      const lower = f.toLowerCase();
-      if (lower.includes('memory') || lower.match(/\d{4}-\d{2}-\d{2}/)) {
-        categories.memory.push(f);
-      } else if (
-        lower.includes('soul') ||
-        lower.includes('identity') ||
-        lower.includes('agents.md')
-      ) {
-        categories.soul.push(f);
-      } else if (
-        lower.includes('config') ||
-        lower.endsWith('.json') ||
-        lower.endsWith('.yml') ||
-        lower.endsWith('.yaml') ||
-        lower.endsWith('.env') ||
-        lower.includes('tools')
-      ) {
-        categories.config.push(f);
-      } else if (
-        lower.includes('workspace') ||
-        lower.includes('scripts') ||
-        lower.endsWith('.js') ||
-        lower.endsWith('.py') ||
-        lower.endsWith('.ts')
-      ) {
-        categories.workspace.push(f);
-      } else {
-        categories.other.push(f);
-      }
+    const START = '# clawkeep-start';
+    const END = '# clawkeep-end';
+    const managed = [START, ...patterns, END].join('\n');
+
+    const gitignorePath = path.join(this.dir, '.gitignore');
+    let existing = '';
+    if (fs.existsSync(gitignorePath)) {
+      existing = fs.readFileSync(gitignorePath, 'utf8');
     }
 
-    const parts = [];
-    const emoji = [];
-
-    if (categories.memory.length) {
-      emoji.push('🧠');
-      parts.push(`memory(${categories.memory.length})`);
-    }
-    if (categories.soul.length) {
-      emoji.push('✨');
-      parts.push(`soul(${categories.soul.length})`);
-    }
-    if (categories.config.length) {
-      emoji.push('⚙️');
-      parts.push(`config(${categories.config.length})`);
-    }
-    if (categories.workspace.length) {
-      emoji.push('📁');
-      parts.push(`workspace(${categories.workspace.length})`);
-    }
-    if (categories.other.length) {
-      parts.push(`files(${categories.other.length})`);
+    // Replace existing managed section or append
+    const startIdx = existing.indexOf(START);
+    const endIdx = existing.indexOf(END);
+    let updated;
+    if (startIdx !== -1 && endIdx !== -1) {
+      updated = existing.substring(0, startIdx) + managed + existing.substring(endIdx + END.length);
+    } else {
+      updated = existing.trimEnd() + '\n\n' + managed + '\n';
     }
 
-    // For single-file changes, be more specific
-    if (files.length === 1) {
-      const file = path.basename(files[0]);
-      const e = emoji[0] || '📝';
-      return `${e} ${file} updated`;
+    // Only write if changed
+    if (updated !== existing) {
+      fs.writeFileSync(gitignorePath, updated);
     }
+  }
 
-    if (files.length <= 3) {
-      const e = emoji[0] || '📝';
-      const names = files.map((f) => path.basename(f)).join(', ');
-      return `${e} ${names}`;
+  /** Generate simple auto-message */
+  _autoMessage(status) {
+    const n = status.files.length;
+    if (n === 1) {
+      return path.basename(status.files[0].path) + ' updated';
     }
-
-    const e = emoji.join('') || '📝';
-    return `${e} ${parts.join(' · ')} — ${files.length} files`;
+    return 'snapshot — ' + n + ' files changed';
   }
 }
 

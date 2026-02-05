@@ -98,11 +98,25 @@ function startServer(claw, dir, port, token, opts) {
     },
     'log': async (p) => await claw.log(parseInt(p.get('limit')) || 50),
     'diff': async () => ({ diff: await claw.diff(false) }),
-    'snap': async () => (await claw.snap()) || { message: 'No changes' },
+    'snap': async (p) => (await claw.snap(p.get('message') || null)) || { message: 'No changes' },
+    'restore': async (p) => {
+      const hash = p.get('hash');
+      if (!hash) return { error: 'hash required' };
+      await claw.restore(hash, false);
+      return { ok: true, message: 'Restored to ' + hash.substring(0, 7) };
+    },
+    'compare': async (p) => {
+      const from = p.get('from'), to = p.get('to');
+      if (!from || !to) return { error: 'from and to required' };
+      return { diff: await claw.diffBetween(from, to) };
+    },
     'files': async (p) => listFiles(dir, p.get('path') || '.'),
     'file': async (p) => readFile(dir, p.get('path')),
     'commit': async (p) => await claw.showCommit(p.get('hash') || 'HEAD'),
     'commit/diff': async (p) => ({ diff: await claw.commitDiff(p.get('hash') || 'HEAD') }),
+    'file-history': async (p) => await claw.fileHistory(p.get('path') || '.'),
+    'files-at': async (p) => await claw.listFilesAtCommit(p.get('hash') || 'HEAD', p.get('path') || ''),
+    'file-at': async (p) => await claw.showFileAtCommit(p.get('hash') || 'HEAD', p.get('path')),
   };
 
   const server = http.createServer(async (req, res) => {
@@ -175,7 +189,6 @@ function startServer(claw, dir, port, token, opts) {
       console.log(chalk.bold.cyan('  🐾 ClawKeep Dashboard'));
       console.log('');
       console.log(`  ${chalk.dim('URL')}     ${chalk.white(`http://localhost:${port}/?token=${token}`)}`);
-      console.log(`  ${chalk.dim('Agent')}   ${chalk.white(claw.loadConfig()?.agentName || 'unknown')}`);
       console.log(`  ${chalk.dim('Auth')}    ${chalk.green('✓ token required')}`);
       console.log('');
       console.log(chalk.dim('  Ctrl+C to stop · --daemon to run in background'));

@@ -21,7 +21,6 @@ module.exports = async function snap(opts) {
 
     if (!result) {
       if (spinner) spinner.info(chalk.dim('Nothing changed.'));
-      else if (!opts.quiet) process.stdout.write('');
       return;
     }
 
