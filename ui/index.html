@@ -20,7 +20,7 @@
       <button class="nav-item" data-tab="diff"><span class="nav-icon">±</span> Changes</button>
     </nav>
     <div class="sidebar-footer">
-      <div id="sidebar-info" class="sidebar-info"></div>
+      <div id="sidebar-agent" class="sidebar-agent"></div>
       <a class="sidebar-link" href="https://clawkeep.com" target="_blank">clawkeep.com</a>
     </div>
   </aside>
@@ -38,16 +38,14 @@
     <div class="content">
       <section id="tab-overview">
         <div id="stats-grid" class="stats-grid"></div>
-        <div id="pending-banner"></div>
-        <div class="box"><div class="box-header">Recent activity <span id="recent-count" class="count"></span></div><div id="recent-body" class="box-body"></div></div>
+        <div class="grid-2">
+          <div class="box"><div class="box-header">Pending changes <span id="ch-count" class="count"></span></div><div id="changes-body" class="box-body"></div></div>
+          <div class="box"><div class="box-header">Recent commits</div><div id="recent-body" class="box-body"></div></div>
+        </div>
       </section>
 
       <section id="tab-commits" class="hidden">
-        <div id="commits-list">
-          <div id="compare-bar" class="compare-bar hidden"></div>
-          <div class="box"><div class="box-header"><span>Commits <span id="commits-count" class="count"></span></span><button id="compare-toggle" class="btn btn-ghost btn-sm" onclick="toggleCompareMode()">Compare</button></div><div id="commits-body" class="box-body"></div></div>
-        </div>
-        <div id="compare-result" class="hidden"></div>
+        <div class="box"><div class="box-header">Commits <span id="commits-count" class="count"></span></div><div id="commits-body" class="box-body"></div></div>
       </section>
 
       <section id="tab-files" class="hidden">
@@ -56,7 +54,6 @@
           <div id="fb-body" class="box-body"></div>
         </div>
         <div id="file-viewer" class="file-viewer"></div>
-        <div id="readme-render"></div>
       </section>
 
       <section id="tab-diff" class="hidden">
@@ -65,8 +62,6 @@
     </div>
   </main>
 </div>
-<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()"></div>
-<div id="modal" class="modal hidden"></div>
 <div id="toast-wrap" class="toast-wrap"></div>
 <script src="/app.js"></script>
 </body>

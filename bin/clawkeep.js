@@ -19,7 +19,7 @@ const LOGO = chalk.cyan(`
 program
   .name('clawkeep')
   .description(
-    chalk.dim('Git-backed versioned backups — set it and forget it') +
+    chalk.dim('Git-backed memory persistence for AI agents') +
     '\n' +
     chalk.dim('  https://clawkeep.com')
   )
@@ -29,8 +29,11 @@ program
 // init
 program
   .command('init')
-  .description('Initialize versioned backup tracking in a directory')
+  .description('Initialize clawkeep tracking in the current directory')
   .option('-d, --dir <path>', 'Target directory to track', '.')
+  .option('--no-detect', 'Skip auto-detection of agent framework')
+  .option('--name <name>', 'Set agent name manually')
+  .option('--framework <fw>', 'Set framework manually (openclaw|clawdbot|nanobot|generic)')
   .action((opts) => require('../src/commands/init')(opts));
 
 // snap
@@ -90,8 +93,6 @@ program
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--interval <ms>', 'Debounce interval in ms', '5000')
   .option('--push', 'Auto-push after each snap', false)
-  .option('--daemon', 'Run in background')
-  .option('--stop', 'Stop background watcher')
   .option('-q, --quiet', 'Minimal output', false)
   .action((opts) => require('../src/commands/watch')(opts));
 
@@ -126,7 +127,7 @@ program
 // status
 program
   .command('status')
-  .description('Show tracking status and stats')
+  .description('Show tracking status, agent info, and stats')
   .option('-d, --dir <path>', 'Target directory', '.')
   .action((opts) => require('../src/commands/status')(opts));
 

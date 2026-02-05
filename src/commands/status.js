@@ -23,15 +23,22 @@ module.exports = async function status(opts) {
     const stats = await claw.getStats();
 
     console.log('');
-    console.log(chalk.bold('  ClawKeep Status'));
+    console.log(chalk.bold('  🐾 ClawKeep Status'));
     console.log('');
 
+    // Agent info
+    console.log(chalk.dim('  ── Agent ──────────────────────'));
+    console.log(`  Name:        ${chalk.cyan(config.agentName)}`);
+    console.log(`  Framework:   ${chalk.white(config.framework)}`);
+    console.log(`  Secrets:     ${config.trackSecrets ? chalk.green('✓ tracked') : chalk.yellow('✗ excluded')}`);
+    console.log(`  Remote:      ${config.remote ? chalk.blue(config.remote) : chalk.dim('none')}`);
+
     // Stats
+    console.log('');
     console.log(chalk.dim('  ── Stats ──────────────────────'));
     console.log(`  Snapshots:   ${chalk.white(stats.totalSnaps)}`);
     console.log(`  Files:       ${chalk.white(stats.trackedFiles)}`);
     console.log(`  Tracking:    ${stats.daysTracked > 0 ? chalk.white(stats.daysTracked + ' day(s)') : chalk.dim('today')}`);
-    console.log(`  Remote:      ${config.remote ? chalk.blue(config.remote) : chalk.dim('none')}`);
 
     if (stats.lastSnap) {
       const ago = _timeAgo(new Date(stats.lastSnap));
@@ -45,7 +52,7 @@ module.exports = async function status(opts) {
       console.log(`  ${chalk.green('●')} Clean — no pending changes`);
     } else {
       console.log(`  ${chalk.yellow('●')} ${gitStatus.total} file(s) changed since last snap`);
-
+      
       const show = gitStatus.files.slice(0, 8);
       for (const f of show) {
         let icon, color;
