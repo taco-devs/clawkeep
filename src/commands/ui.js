@@ -103,6 +103,9 @@ function startServer(claw, dir, port, token, opts) {
     'file': async (p) => readFile(dir, p.get('path')),
     'commit': async (p) => await claw.showCommit(p.get('hash') || 'HEAD'),
     'commit/diff': async (p) => ({ diff: await claw.commitDiff(p.get('hash') || 'HEAD') }),
+    'file-history': async (p) => await claw.fileHistory(p.get('path') || '.'),
+    'files-at': async (p) => await claw.listFilesAtCommit(p.get('hash') || 'HEAD', p.get('path') || ''),
+    'file-at': async (p) => await claw.showFileAtCommit(p.get('hash') || 'HEAD', p.get('path')),
   };
 
   const server = http.createServer(async (req, res) => {
@@ -175,7 +178,6 @@ function startServer(claw, dir, port, token, opts) {
       console.log(chalk.bold.cyan('  🐾 ClawKeep Dashboard'));
       console.log('');
       console.log(`  ${chalk.dim('URL')}     ${chalk.white(`http://localhost:${port}/?token=${token}`)}`);
-      console.log(`  ${chalk.dim('Agent')}   ${chalk.white(claw.loadConfig()?.agentName || 'unknown')}`);
       console.log(`  ${chalk.dim('Auth')}    ${chalk.green('✓ token required')}`);
       console.log('');
       console.log(chalk.dim('  Ctrl+C to stop · --daemon to run in background'));

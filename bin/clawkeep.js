@@ -19,7 +19,7 @@ const LOGO = chalk.cyan(`
 program
   .name('clawkeep')
   .description(
-    chalk.dim('Git-backed memory persistence for AI agents') +
+    chalk.dim('Git-backed versioned backups — set it and forget it') +
     '\n' +
     chalk.dim('  https://clawkeep.com')
   )
@@ -29,11 +29,8 @@ program
 // init
 program
   .command('init')
-  .description('Initialize clawkeep tracking in the current directory')
+  .description('Initialize versioned backup tracking in a directory')
   .option('-d, --dir <path>', 'Target directory to track', '.')
-  .option('--no-detect', 'Skip auto-detection of agent framework')
-  .option('--name <name>', 'Set agent name manually')
-  .option('--framework <fw>', 'Set framework manually (openclaw|clawdbot|nanobot|generic)')
   .action((opts) => require('../src/commands/init')(opts));
 
 // snap
@@ -127,7 +124,7 @@ program
 // status
 program
   .command('status')
-  .description('Show tracking status, agent info, and stats')
+  .description('Show tracking status and stats')
   .option('-d, --dir <path>', 'Target directory', '.')
   .action((opts) => require('../src/commands/status')(opts));
 
