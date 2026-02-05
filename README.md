@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner2.jpg" alt="ClawKeep" width="100%" />
+  <img src="assets/banner.jpg" alt="ClawKeep" width="100%" />
 </p>
 
 <h1 align="center">🐾 ClawKeep</h1>
@@ -31,7 +31,7 @@ ClawKeep gives your files **full version history**. Every change is tracked. Eve
 
 ```
 clawkeep init       →  start tracking
-clawkeep watch      →  auto-backup on every change (background daemon)
+clawkeep watch      →  auto-backup on every change
 clawkeep restore    →  go back to any point in time
 ```
 
@@ -88,13 +88,39 @@ clawkeep ui --daemon --port 3333
 
 **What you get:**
 - 📋 **Timeline** — every snapshot with expandable diffs
-- 📁 **File browser** — browse files at any point in history  
+- 📁 **File browser** — browse files at any point in history
 - 🔀 **Compare** — select any two snapshots and see exactly what changed
 - ⏪ **One-click restore** — revert to any snapshot from the UI
 - ✏️ **Named snapshots** — label important checkpoints
 - 🎨 **Syntax highlighting** — JS, Python, Go, Rust, JSON, YAML, CSS, HTML
 
 Token-based auth. Runs as a background daemon. Auto-refreshes.
+
+## Framework Integrations
+
+ClawKeep works with any directory, but it's especially useful for AI agent frameworks that maintain persistent state:
+
+| Framework | What to track | How to integrate |
+|---|---|---|
+| **[Clawdbot](https://github.com/clawdbot/clawdbot)** | `MEMORY.md`, `SOUL.md`, `IDENTITY.md`, config, daily notes | Heartbeat task or watch daemon. See [SKILL.md](SKILL.md) |
+| **[OpenClaw](https://github.com/openclaw)** | `.openclaw/` memory, agent state, tool configs | `clawkeep init && clawkeep watch --daemon` in agent dir |
+| **[Nanobot](https://github.com/nicholasgriffintn/nanobot)** | `nanobot.yml`, conversation history, plugins | Watch daemon on nanobot workspace |
+| **[Claude Code](https://claude.ai/code)** | `CLAUDE.md`, project context, session artifacts | `clawkeep watch --daemon` in project root |
+| **[Codex CLI](https://github.com/openai/codex)** | `codex.md`, workspace files | Watch daemon on workspace |
+| **[CrewAI](https://github.com/joaomdmoura/crewAI)** | Agent memory, task outputs, crew configs | Watch daemon on crew workspace |
+| **[AutoGPT](https://github.com/Significant-Gravitas/AutoGPT)** | Agent state, auto_gpt_workspace, memory | Watch daemon on workspace root |
+| **Generic** | Any directory with files that change | `clawkeep init && clawkeep watch --daemon` |
+
+### Agent Skill
+
+ClawKeep ships with a [SKILL.md](SKILL.md) that any AI agent can read and follow. Drop it into your agent's skills directory and it will know how to:
+
+- Initialize ClawKeep on its own workspace
+- Run watch mode or periodic snapshots via heartbeat
+- Restore to previous versions when something goes wrong
+- Take named snapshots before risky operations
+
+See [SKILL.md](SKILL.md) for the full agent-readable integration guide.
 
 ## Smart Ignore
 
@@ -162,10 +188,12 @@ Portable, encrypted backup of your entire version history:
 
 ```bash
 clawkeep export -p "strong-password"
-# → agent-2026-02-05.clawkeep.enc (AES-256-CTR + scrypt)
+# → project-2026-02-05.clawkeep.enc (AES-256-CTR + scrypt)
 
 clawkeep import backup.clawkeep.enc -p "strong-password"
 ```
+
+Or use the `CLAWKEEP_PASSWORD` environment variable for automated exports.
 
 ## Programmatic API
 
@@ -186,15 +214,19 @@ const changes = await claw.diffBetween('abc123', 'def456');
 
 // Restore
 await claw.restore('abc123');
+
+// Time-travel file browsing
+const files = await claw.listFilesAtCommit('abc123', 'memory/');
+const content = await claw.showFileAtCommit('abc123', 'MEMORY.md');
 ```
 
-## Built for AI Agents
+## Built for AI Agents, Works for Everything
 
 ClawKeep was built because AI agents break their own files. But it works for anything:
 
 - **AI agent memory & config** — the original use case
 - **Dotfiles** — version your shell config without thinking
-- **Writing projects** — every draft saved, every version recoverable  
+- **Writing projects** — every draft saved, every version recoverable
 - **Config management** — track infrastructure config changes over time
 - **Any directory** — if files change, ClawKeep can track them
 
