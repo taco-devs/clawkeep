@@ -398,25 +398,33 @@ async function loadOverview() {
     <div class="stat-card"><div class="stat-label">Last snapshot</div><div class="stat-value" style="font-size:16px">${lastSnap}</div></div>
   `;
 
-  // Changes
-  if (gs.clean) {
-    $('#ch-count').textContent = '';
-    $('#changes-body').innerHTML = '<div class="empty">Working tree clean</div>';
-  } else {
-    $('#ch-count').textContent = gs.total;
-    $('#changes-body').innerHTML = (gs.files || []).slice(0, 15).map(f => {
+  // Pending changes — compact banner, not a full section
+  const banner = $('#pending-banner');
+  if (!gs.clean) {
+    const fileList = (gs.files || []).slice(0, 5).map(f => {
       let cls = 'cb-m', label = 'M';
       if (f.working_dir === '?' || f.index === '?') { cls = 'cb-a'; label = 'A'; }
       else if (f.working_dir === 'D' || f.index === 'D') { cls = 'cb-d'; label = 'D'; }
-      return `<div class="change-row"><span class="change-badge ${cls}">${label}</span><span class="change-path">${esc(f.path)}</span></div>`;
-    }).join('');
+      return `<span class="change-badge ${cls}">${label}</span> <span class="pending-path">${esc(f.path)}</span>`;
+    }).join('<span class="pending-sep">·</span>');
+    const more = gs.total > 5 ? `<span class="pending-more">+${gs.total - 5} more</span>` : '';
+    banner.innerHTML = `<div class="pending-banner">
+      <div class="pending-left"><span class="pending-dot"></span><strong>${gs.total} unsaved change${gs.total !== 1 ? 's' : ''}</strong></div>
+      <div class="pending-files">${fileList}${more}</div>
+      <button class="btn btn-primary btn-sm" onclick="takeSnap()">Snapshot now</button>
+    </div>`;
+  } else {
+    banner.innerHTML = '';
   }
 
-  // Recent commits (clickable to commit detail)
-  const entries = await api('log', 'limit=5');
-  $('#recent-body').innerHTML = entries.length
-    ? entries.map((e, i) => commitRow(e, i === 0, true)).join('')
-    : '<div class="empty">No commits yet</div>';
+  // Recent commits — the main event
+  const entries = await api('log', 'limit=20');
+  $('#recent-count').textContent = entries.length;
+  if (!entries.length) {
+    $('#recent-body').innerHTML = '<div class="empty">No snapshots yet. Make some changes and hit Snapshot.</div>';
+  } else {
+    $('#recent-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, true)).join('');
+  }
 
   $('#last-updated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
@@ -426,10 +434,13 @@ let commitDetailHash = null;
 
 async function loadCommits() {
   commitDetailHash = null;
+  if (compareMode) toggleCompareMode();
   const detail = $('#commit-detail-view');
   if (detail) detail.classList.add('hidden');
   const list = $('#commits-list');
   if (list) list.classList.remove('hidden');
+  const result = $('#compare-result');
+  if (result) result.classList.add('hidden');
 
   const entries = await api('log', 'limit=100');
   $('#commits-count').textContent = entries.length;
@@ -439,17 +450,20 @@ async function loadCommits() {
 
 function commitRow(e, isLatest, clickable) {
   const short = e.hash.substring(0, 7);
-  const onclick = clickable ? ` onclick="showCommitDetail('${e.hash}')"` : '';
+  const onclick = clickable ? ` onclick="onCompareClick('${e.hash}', this)"` : '';
+  const date = new Date(e.date);
+  const fullDate = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   return `
     <div class="commit-row"${onclick}>
-      <div class="commit-dot ${isLatest ? 'latest' : 'old'}"></div>
+      <div class="commit-timeline"><div class="commit-dot ${isLatest ? 'latest' : 'old'}"></div><div class="commit-line"></div></div>
       <div class="commit-body">
         <div class="commit-msg">${esc(e.message)}</div>
         <div class="commit-meta">
-          <span>${e.author || 'ClawKeep'} committed ${timeAgo(e.date)}</span>
+          <span class="commit-hash">${short}</span>
+          <span>${timeAgo(e.date)}</span>
+          <span class="commit-fulldate">${fullDate}</span>
         </div>
       </div>
-      <span class="commit-hash">${short}</span>
     </div>`;
 }
 
@@ -501,7 +515,8 @@ async function showCommitDetail(hash) {
           ${meta.summary ? ' &middot; ' + esc(meta.summary) : ''}
         </div>
         <div class="cdp-actions">
-          <button class="btn btn-ghost" onclick="browseAtCommit('${hash}')">📁 Browse files at this snapshot</button>
+          <button class="btn btn-ghost" onclick="browseAtCommit('${hash}')">📁 Browse files</button>
+          <button class="btn btn-danger" onclick="confirmRestore('${hash}')">↩ Restore to this snapshot</button>
         </div>
       </div>
       <div class="cdp-diff">
@@ -765,18 +780,140 @@ async function loadDiff() {
 }
 
 
+/* ═══ MODAL ═══ */
+function showModal(html) {
+  $('#modal').innerHTML = html;
+  $('#modal-overlay').classList.remove('hidden');
+  $('#modal').classList.remove('hidden');
+}
+
+function closeModal() {
+  $('#modal-overlay').classList.add('hidden');
+  $('#modal').classList.add('hidden');
+}
+
+/* ═══ RESTORE ═══ */
+function confirmRestore(hash) {
+  const short = hash.substring(0, 7);
+  showModal(`
+    <h3>Restore to snapshot</h3>
+    <p>This will revert all files to snapshot <span class="modal-hash">${short}</span> and create a new snapshot. Your current state will still be in history.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="doRestore('${hash}')">Restore</button>
+    </div>
+  `);
+}
+
+async function doRestore(hash) {
+  closeModal();
+  const short = hash.substring(0, 7);
+  toast('Restoring to ' + short + '...');
+  try {
+    const r = await api('restore', 'hash=' + hash);
+    if (r.error) { toast('Error: ' + r.error); return; }
+    await loadOverview();
+    toast('Restored to ' + short + '. New snapshot created.', true);
+    // Go back to commits list to see the new restore commit
+    loadCommits();
+  } catch (e) { toast('Restore failed: ' + e.message); }
+}
+
+/* ═══ COMPARE ═══ */
+let compareMode = false;
+let compareFrom = null;
+let compareTo = null;
+
+function toggleCompareMode() {
+  compareMode = !compareMode;
+  compareFrom = null;
+  compareTo = null;
+  const toggle = $('#compare-toggle');
+  const bar = $('#compare-bar');
+  const result = $('#compare-result');
+
+  if (compareMode) {
+    toggle.textContent = 'Cancel';
+    toggle.classList.add('btn-danger');
+    toggle.classList.remove('btn-ghost');
+    bar.classList.remove('hidden');
+    bar.innerHTML = 'Select the <strong>base</strong> commit...';
+    result.classList.add('hidden');
+    $('#commits-body').classList.add('compare-mode');
+  } else {
+    toggle.textContent = 'Compare';
+    toggle.classList.remove('btn-danger');
+    toggle.classList.add('btn-ghost');
+    bar.classList.add('hidden');
+    result.classList.add('hidden');
+    $('#commits-body').classList.remove('compare-mode');
+    $$('#commits-body .commit-row.selected').forEach(r => r.classList.remove('selected'));
+  }
+}
+
+function onCompareClick(hash, el) {
+  if (!compareMode) { showCommitDetail(hash); return; }
+
+  if (!compareFrom) {
+    compareFrom = hash;
+    el.classList.add('selected');
+    $('#compare-bar').innerHTML = `Base: <span class="commit-hash">${hash.substring(0, 7)}</span> — now select the <strong>target</strong> commit`;
+  } else if (!compareTo && hash !== compareFrom) {
+    compareTo = hash;
+    el.classList.add('selected');
+    runCompare();
+  }
+}
+
+async function runCompare() {
+  const bar = $('#compare-bar');
+  const fromShort = compareFrom.substring(0, 7);
+  const toShort = compareTo.substring(0, 7);
+  bar.innerHTML = `Comparing <span class="commit-hash">${fromShort}</span> → <span class="commit-hash">${toShort}</span> <button class="btn btn-ghost btn-sm" onclick="toggleCompareMode()" style="margin-left:auto">Clear</button>`;
+
+  const result = $('#compare-result');
+  result.classList.remove('hidden');
+  result.innerHTML = '<div class="empty" style="padding:40px">Loading diff...</div>';
+
+  try {
+    const data = await api('compare', 'from=' + compareFrom + '&to=' + compareTo);
+    if (data.error) { result.innerHTML = `<div class="empty">${esc(data.error)}</div>`; return; }
+    result.innerHTML = `<div class="box"><div class="box-header">Changes between ${fromShort} and ${toShort}</div><div class="box-body">${renderDiffSections(data.diff || '')}</div></div>`;
+  } catch (e) {
+    result.innerHTML = `<div class="empty">Compare failed: ${esc(e.message)}</div>`;
+  }
+}
+
 /* ═══ ACTIONS ═══ */
 async function refresh() { await loadOverview(); toast('Refreshed', true); }
 
-async function takeSnap() {
-  const btn = $('.btn-primary');
-  btn.innerHTML = '&#8987; Snapping...'; btn.disabled = true;
+function takeSnap() {
+  showModal(`
+    <h3>Create snapshot</h3>
+    <p>Give this snapshot a name, or leave empty for auto-generated.</p>
+    <input class="modal-input" id="snap-msg" type="text" placeholder="e.g. before risky deploy" autofocus>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="doSnap()">Snapshot</button>
+    </div>
+  `);
+  // Focus the input after modal renders
+  setTimeout(() => { const el = $('#snap-msg'); if (el) el.focus(); }, 50);
+}
+
+async function doSnap() {
+  const msgEl = $('#snap-msg');
+  const msg = msgEl ? msgEl.value.trim() : '';
+  closeModal();
+  const btn = document.querySelector('.topbar .btn-primary');
+  if (btn) { btn.innerHTML = '&#8987; Snapping...'; btn.disabled = true; }
   try {
-    const r = await api('snap');
+    const q = msg ? 'message=' + encodeURIComponent(msg) : '';
+    const r = await api('snap', q);
     await loadOverview();
     toast(r.hash ? `Snapshot ${r.hash.substring(0, 7)} created` : 'Nothing to commit', true);
   } catch (e) { toast('Error: ' + e.message); }
-  btn.innerHTML = '&#10010; Snapshot'; btn.disabled = false;
+  if (btn) { btn.innerHTML = '&#10010; Snapshot'; btn.disabled = false; }
 }
 
 /* Init */

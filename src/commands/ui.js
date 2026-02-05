@@ -98,7 +98,18 @@ function startServer(claw, dir, port, token, opts) {
     },
     'log': async (p) => await claw.log(parseInt(p.get('limit')) || 50),
     'diff': async () => ({ diff: await claw.diff(false) }),
-    'snap': async () => (await claw.snap()) || { message: 'No changes' },
+    'snap': async (p) => (await claw.snap(p.get('message') || null)) || { message: 'No changes' },
+    'restore': async (p) => {
+      const hash = p.get('hash');
+      if (!hash) return { error: 'hash required' };
+      await claw.restore(hash, false);
+      return { ok: true, message: 'Restored to ' + hash.substring(0, 7) };
+    },
+    'compare': async (p) => {
+      const from = p.get('from'), to = p.get('to');
+      if (!from || !to) return { error: 'from and to required' };
+      return { diff: await claw.diffBetween(from, to) };
+    },
     'files': async (p) => listFiles(dir, p.get('path') || '.'),
     'file': async (p) => readFile(dir, p.get('path')),
     'commit': async (p) => await claw.showCommit(p.get('hash') || 'HEAD'),

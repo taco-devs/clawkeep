@@ -54,14 +54,49 @@ class ClawGit {
       JSON.stringify(clawConfig, null, 2)
     );
 
-    // Write default .clawkeepignore
+    // Write default .clawkeepignore with sensible defaults
     const ignorePath = path.join(this.dir, '.clawkeepignore');
     if (!fs.existsSync(ignorePath)) {
       fs.writeFileSync(
         ignorePath,
-        '# ClawKeep ignore file\n# Add patterns here to exclude files from tracking\n\n# Example:\n# *.log\n# tmp/\n'
+        [
+          '# ClawKeep ignore — patterns here are synced to .gitignore',
+          '# Add anything you don\'t want versioned',
+          '',
+          '# Dependencies',
+          'node_modules/',
+          'vendor/',
+          '.venv/',
+          '__pycache__/',
+          '*.pyc',
+          '',
+          '# Build output',
+          'dist/',
+          'build/',
+          '.next/',
+          '',
+          '# Environment & secrets',
+          '.env',
+          '.env.*',
+          '*.pem',
+          '*.key',
+          '',
+          '# Logs & temp',
+          '*.log',
+          'tmp/',
+          '.cache/',
+          '',
+          '# ClawKeep internals',
+          '.clawkeep/ui.pid',
+          '.clawkeep/ui.token',
+          '.clawkeep/watch.pid',
+          '',
+        ].join('\n')
       );
     }
+
+    // Sync ignore patterns to .gitignore so git respects them
+    this._syncIgnore();
 
     return clawConfig;
   }
@@ -81,6 +116,7 @@ class ClawGit {
 
   /** Stage all changes and commit */
   async snap(message) {
+    this._syncIgnore();
     await this.git.add('-A');
 
     const status = await this.git.status();
@@ -111,6 +147,7 @@ class ClawGit {
 
   /** Get diff since last snap */
   async diff(statOnly = false) {
+    this._syncIgnore();
     await this.git.add('-A');
     const args = ['--cached'];
     if (statOnly) args.push('--stat');
@@ -212,6 +249,15 @@ class ClawGit {
     }
   }
 
+  /** Get diff between any two commits */
+  async diffBetween(hash1, hash2) {
+    try {
+      return await this.git.diff([hash1, hash2]);
+    } catch (e) {
+      return '';
+    }
+  }
+
   /** Get last commit info for files in a directory */
   async fileHistory(dir) {
     try {
@@ -307,7 +353,7 @@ class ClawGit {
     await this.git.pull('origin', 'main', { '--rebase': 'true' });
   }
 
-  /** Load .clawkeepignore patterns */
+  /** Load .clawkeepignore patterns (parsed, no comments/blanks) */
   _loadIgnorePatterns() {
     const ignorePath = path.join(this.dir, '.clawkeepignore');
     if (!fs.existsSync(ignorePath)) return [];
@@ -316,6 +362,37 @@ class ClawGit {
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l && !l.startsWith('#'));
+  }
+
+  /** Sync .clawkeepignore patterns into .gitignore (managed section) */
+  _syncIgnore() {
+    const patterns = this._loadIgnorePatterns();
+    if (!patterns.length) return;
+
+    const START = '# clawkeep-start';
+    const END = '# clawkeep-end';
+    const managed = [START, ...patterns, END].join('\n');
+
+    const gitignorePath = path.join(this.dir, '.gitignore');
+    let existing = '';
+    if (fs.existsSync(gitignorePath)) {
+      existing = fs.readFileSync(gitignorePath, 'utf8');
+    }
+
+    // Replace existing managed section or append
+    const startIdx = existing.indexOf(START);
+    const endIdx = existing.indexOf(END);
+    let updated;
+    if (startIdx !== -1 && endIdx !== -1) {
+      updated = existing.substring(0, startIdx) + managed + existing.substring(endIdx + END.length);
+    } else {
+      updated = existing.trimEnd() + '\n\n' + managed + '\n';
+    }
+
+    // Only write if changed
+    if (updated !== existing) {
+      fs.writeFileSync(gitignorePath, updated);
+    }
   }
 
   /** Generate simple auto-message */

@@ -90,6 +90,8 @@ program
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--interval <ms>', 'Debounce interval in ms', '5000')
   .option('--push', 'Auto-push after each snap', false)
+  .option('--daemon', 'Run in background')
+  .option('--stop', 'Stop background watcher')
   .option('-q, --quiet', 'Minimal output', false)
   .action((opts) => require('../src/commands/watch')(opts));
 
