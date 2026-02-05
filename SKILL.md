@@ -148,40 +148,32 @@ videos/
 .cache/
 ```
 
-## Remote Sync
+## Backup Targets (Encrypted)
 
-Push your version history to a remote git repo:
-
-```bash
-# Set remote once
-clawkeep push -d /path/to/workspace -r https://github.com/you/agent-backups.git
-
-# Auto-push with watch daemon
-clawkeep watch --daemon --push -d /path/to/workspace
-```
-
-## Backup Targets
-
-Configure where your backups are synced to for offsite protection:
+Configure where your encrypted backups are synced to:
 
 ```bash
-# Mirror to a local path (NAS, external drive, etc.)
-clawkeep backup local /mnt/nas/backups/my-workspace -d /path/to/workspace
+# Set encryption password (once, required)
+clawkeep backup set-password -d /path/to/workspace
 
-# Push to a git remote
-clawkeep backup git git@github.com:you/agent-backups.git -d /path/to/workspace
+# Back up to a local path (NAS, external drive, etc.)
+clawkeep backup local /mnt/nas/backups -d /path/to/workspace
+
+# Sync (incremental — only new changes after first sync)
+clawkeep backup sync -d /path/to/workspace
 
 # Check backup status
 clawkeep backup status -d /path/to/workspace
 
-# Manual sync
-clawkeep backup sync -d /path/to/workspace
-
 # Test connection
 clawkeep backup test -d /path/to/workspace
+
+# Restore from encrypted backup
+clawkeep backup restore /mnt/nas/backups/workspace-id/ -d /path/to/workspace
 ```
 
-Available targets: `local` (folder/NAS), `git` (remote repo). Cloud and S3 coming soon.
+All backups are AES-256-GCM encrypted. Target path only contains opaque `.enc` chunk files.
+Available targets: `local` (folder/NAS). S3 and Cloud coming soon.
 
 ## Encrypted Export
 
@@ -228,10 +220,11 @@ const oldContent = await claw.showFileAtCommit('abc123', 'MEMORY.md');
 | View history | `clawkeep log -d <dir>` |
 | Restore | `clawkeep restore <hash> -d <dir>` |
 | See changes | `clawkeep diff -d <dir>` |
+| Set backup password | `clawkeep backup set-password -d <dir>` |
 | Set backup target | `clawkeep backup local <path> -d <dir>` |
 | Sync to target | `clawkeep backup sync -d <dir>` |
 | Backup status | `clawkeep backup status -d <dir>` |
+| Restore from backup | `clawkeep backup restore <path> -d <dir>` |
 | Launch dashboard | `clawkeep ui --daemon -d <dir> --port 3333` |
 | Stop dashboard | `clawkeep ui --stop -d <dir>` |
-| Push to remote | `clawkeep push -d <dir>` |
 | Export encrypted | `clawkeep export -d <dir> -p "password"` |

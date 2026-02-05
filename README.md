@@ -27,7 +27,7 @@ You reach for a backup. All you have is a zip from three days ago.
 
 ## The Solution
 
-ClawKeep gives your files **full version history with backup targets**. Every change is tracked. Every state is recoverable. Back up to a local path, git remote, or (soon) the cloud. Built on git, but you never touch git.
+ClawKeep gives your files **full version history with encrypted backups**. Every change is tracked. Every state is recoverable. Back up to a local path, S3, or (soon) ClawKeep Cloud — all encrypted, all incremental. Built on git internally, but you never touch git.
 
 ```
 clawkeep init       →  start tracking
@@ -71,9 +71,9 @@ Done. Every file change is now automatically versioned.
 | `clawkeep log` | Browse your backup timeline |
 | `clawkeep restore <ref>` | Time-travel to any backup |
 | `clawkeep diff` | See what changed since last backup |
-| `clawkeep backup` | Manage backup targets (local, git, cloud, S3) |
-| `clawkeep push` | Sync to remote |
-| `clawkeep pull` | Pull latest from remote |
+| `clawkeep backup` | Manage encrypted backup targets (local, S3, cloud) |
+| `clawkeep backup sync` | Sync encrypted backup to target |
+| `clawkeep backup restore` | Restore from encrypted backup |
 | `clawkeep export` | AES-256 encrypted portable archive |
 | `clawkeep import` | Restore from encrypted archive |
 | `clawkeep status` | Show tracking stats |
@@ -84,28 +84,29 @@ Done. Every file change is now automatically versioned.
 Choose where your data goes. Configure once, sync automatically.
 
 ```bash
-# Mirror to a local path (NAS, external drive, etc.)
-clawkeep backup local /mnt/nas/backups/my-project
+# Set encryption password (once)
+clawkeep backup set-password
 
-# Push to a git remote
-clawkeep backup git git@github.com:you/agent-backups.git
+# Back up to a local path (NAS, external drive, etc.)
+clawkeep backup local /mnt/nas/backups
+
+# Sync (incremental — only new changes)
+clawkeep backup sync
 
 # Check backup status
 clawkeep backup status
 
-# Sync now
-clawkeep backup sync
-
-# Test connection
-clawkeep backup test
+# Restore from backup
+clawkeep backup restore /mnt/nas/backups/my-workspace/
 ```
+
+All backups are **AES-256-GCM encrypted** and **incremental** — only new changes are synced after the first backup.
 
 | Target | Status | Description |
 |---|---|---|
-| **Local path** | ✅ Available | Mirror to any local folder, NAS, or mounted drive |
-| **Git remote** | ✅ Available | Push to GitHub, GitLab, or any git remote |
-| **ClawKeep Cloud** | 🔜 Coming soon | Managed backup with web dashboard at clawkeep.com |
-| **S3 / R2** | 🔜 Coming soon | Object storage for large workspaces |
+| **Local path** | ✅ Available | Encrypted chunks on any folder, NAS, or mounted drive |
+| **S3 / R2** | 🔜 Coming soon | Encrypted chunks on object storage |
+| **ClawKeep Cloud** | 🔜 Coming soon | Managed encrypted backup at clawkeep.com |
 
 ## Web Dashboard
 
@@ -215,18 +216,17 @@ See exactly what changed between any two points in time:
 - **CLI:** `clawkeep diff` shows changes since last backup
 - **API:** `GET /api/compare?from=abc123&to=def456`
 
-## Encrypted Export
+## Encrypted by Default
 
-Portable, encrypted backup of your entire version history:
+All backups are AES-256-GCM encrypted with scrypt key derivation. Your data is opaque on the target — no file names, no git history, nothing readable. Just numbered `.enc` chunks.
 
 ```bash
+# One-off encrypted export (portable archive)
 clawkeep export -p "strong-password"
-# → project-2026-02-05.clawkeep.enc (AES-256-CTR + scrypt)
 
+# Import from archive
 clawkeep import backup.clawkeep.enc -p "strong-password"
 ```
-
-Or download an encrypted export directly from the web dashboard's Backup tab.
 
 ## Programmatic API
 
@@ -276,7 +276,7 @@ Or you could run `clawkeep watch --daemon` and never think about it again.
 | Ignore patterns | Manual `.gitignore` | Auto-managed `.clawkeepignore` |
 | Time travel | `git checkout` / `git stash` | `clawkeep restore` |
 | Visual history | External GUI needed | Built-in web dashboard |
-| Backup targets | Manual remote config | `clawkeep backup local /path` |
+| Backup targets | Manual remote config | `clawkeep backup local /path` (encrypted) |
 | Encrypted export | Not built-in | `clawkeep export` |
 | Learning curve | Steep | Three commands |
 

@@ -88,6 +88,7 @@ program
   .command('backup [subcommand] [path]')
   .description('Manage backup target (local, cloud, s3, git)')
   .option('-d, --dir <path>', 'Target directory', '.')
+  .option('-p, --password <pass>', 'Encryption password (or CLAWKEEP_PASSWORD env)')
   .action((subcommand, targetPath, opts) => {
     opts.args = targetPath ? [targetPath] : [];
     opts.path = targetPath;

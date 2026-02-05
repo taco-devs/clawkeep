@@ -411,6 +411,12 @@ async function loadDashboard() {
   if (backupStatus.target) {
     const syncLabel = backupStatus.lastSync ? `synced ${timeAgo(backupStatus.lastSync)}` : 'not synced yet';
     checks.push(`<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Backup target: ${esc(backupStatus.targetLabel || backupStatus.target)} (${syncLabel})</div>`);
+    if (backupStatus.target === 'local' && backupStatus.passwordSet) {
+      const chunkInfo = backupStatus.chunkCount ? ` (${backupStatus.chunkCount} chunk${backupStatus.chunkCount !== 1 ? 's' : ''})` : '';
+      checks.push(`<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Encrypted backup${chunkInfo}</div>`);
+    } else if (backupStatus.target === 'local' && !backupStatus.passwordSet) {
+      checks.push('<div class="prot-item prot-warn"><span class="prot-icon">&#9888;</span> Encryption password not set</div>');
+    }
   } else {
     checks.push('<div class="prot-item prot-warn"><span class="prot-icon">&#9888;</span> No backup target configured</div>');
   }
@@ -543,39 +549,59 @@ async function showBackupDetail(hash) {
 
 /* ═══ BACKUP TAB ═══ */
 async function loadBackup() {
-  const [backupStatus, repoSize] = await Promise.all([
+  const [backupStatus, repoSize, passwordStatus] = await Promise.all([
     api('backup/status').catch(() => ({})),
     api('backup/repo-size').catch(() => ({})),
+    api('backup/has-password').catch(() => ({ set: false })),
   ]);
 
   const container = $('#backup-content');
   let html = '';
 
+  // Password setup card (for local targets or when no target yet)
+  if (!backupStatus.target || backupStatus.target === 'local') {
+    const pwSet = passwordStatus.set || backupStatus.passwordSet;
+    html += `<div class="box">
+      <div class="box-header">Encryption</div>
+      <div class="box-body-pad">
+        ${pwSet
+          ? '<div class="prot-item prot-ok"><span class="prot-icon">&#10003;</span> Encryption password set &mdash; backups are encrypted with AES-256-GCM</div>'
+          : `<p class="target-prompt">Set an encryption password to protect your backups. Your password is never stored &mdash; only a hash for verification.</p>
+            <div class="export-form">
+              <input class="modal-input" id="backup-password" type="password" placeholder="Encryption password">
+              <button class="btn btn-primary" onclick="doSetBackupPassword()">Set password</button>
+            </div>`
+        }
+      </div>
+    </div>`;
+  }
+
   if (backupStatus.target) {
     // Configured: show status card
-    const targetIcon = { local: 'folder', git: 'git', cloud: 'cloud', s3: 'cloud' }[backupStatus.target] || 'folder';
     const syncLabel = backupStatus.lastSync ? timeAgo(backupStatus.lastSync) : 'never';
     const autoSync = backupStatus.autoSync ? 'On' : 'Off';
 
-    html += `<div class="box">
+    html += `<div class="box" style="margin-top:16px">
       <div class="box-header">Backup target</div>
       <div class="box-body-pad">
         <div class="target-status">
           <div class="target-info">
             <div class="target-type">${esc(backupStatus.target.charAt(0).toUpperCase() + backupStatus.target.slice(1))} &mdash; ${esc(backupStatus.targetLabel || '')}</div>
             <div class="target-detail">Last sync: ${syncLabel} &middot; Auto-sync: ${autoSync}</div>
+            ${backupStatus.chunkCount ? `<div class="target-detail">Chunks: ${backupStatus.chunkCount}${backupStatus.workspaceId ? ' &middot; Workspace: ' + esc(backupStatus.workspaceId) : ''}</div>` : ''}
           </div>
           <div class="target-actions">
             <button class="btn btn-primary btn-sm" onclick="doSync()">Sync now</button>
             <button class="btn btn-ghost btn-sm" onclick="doTest()">Test connection</button>
             <button class="btn btn-ghost btn-sm" onclick="showSetTarget()">Change target</button>
+            ${backupStatus.chunkCount > 10 ? '<button class="btn btn-ghost btn-sm" onclick="doCompact()">Compact</button>' : ''}
           </div>
         </div>
       </div>
     </div>`;
   } else {
     // Not configured: show target selection
-    html += `<div class="box">
+    html += `<div class="box" style="margin-top:16px">
       <div class="box-header">Backup target</div>
       <div class="box-body-pad">
         <p class="target-prompt">Choose where to back up your data.</p>
@@ -583,7 +609,7 @@ async function loadBackup() {
           <div class="target-card" onclick="showSetTarget('local')">
             <div class="target-card-icon">&#128193;</div>
             <div class="target-card-title">Local path</div>
-            <div class="target-card-desc">Mirror to a local folder, NAS, or external drive</div>
+            <div class="target-card-desc">Encrypted backup to a local folder, NAS, or external drive</div>
           </div>
           <div class="target-card" onclick="showSetTarget('git')">
             <div class="target-card-icon">&#128268;</div>
@@ -605,20 +631,6 @@ async function loadBackup() {
     </div>`;
   }
 
-  // Export card
-  const sizeStr = repoSize.size ? fmtSize(repoSize.size) : '';
-  html += `<div class="box" style="margin-top:16px">
-    <div class="box-header">Export</div>
-    <div class="box-body-pad">
-      <p class="export-desc">Download an encrypted copy of your entire backup history. AES-256 encrypted, password protected.</p>
-      <div class="export-form">
-        <input class="modal-input" id="export-password" type="password" placeholder="Encryption password">
-        <button class="btn btn-primary" id="export-btn" onclick="downloadExport()">Download encrypted backup</button>
-      </div>
-      ${sizeStr ? `<div class="export-size">Estimated size: ~${sizeStr}</div>` : ''}
-    </div>
-  </div>`;
-
   container.innerHTML = html;
 }
 
@@ -626,7 +638,7 @@ function showSetTarget(type) {
   if (type === 'local') {
     showModal(`
       <h3>Set local backup target</h3>
-      <p>Enter the path where backups should be mirrored. A bare git mirror will be created at this location.</p>
+      <p>Enter the path where encrypted backups will be stored. All data is AES-256-GCM encrypted before writing.</p>
       <input class="modal-input" id="target-path" type="text" placeholder="/mnt/nas/backups/my-project" autofocus>
       <div class="modal-actions">
         <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -683,6 +695,39 @@ async function doSetTarget(type) {
 }
 
 async function doSync() {
+  // Check if local target — need password
+  const status = await api('backup/status').catch(() => ({}));
+  if (status.target === 'local') {
+    showModal(`
+      <h3>Sync backup</h3>
+      <p>Enter your encryption password to sync.</p>
+      <input class="modal-input" id="sync-password" type="password" placeholder="Encryption password" autofocus>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="runSync()">Sync</button>
+      </div>
+    `);
+    setTimeout(() => { const el = $('#sync-password'); if (el) el.focus(); }, 50);
+    return;
+  }
+  runSyncDirect();
+}
+
+async function runSync() {
+  const password = $('#sync-password').value.trim();
+  if (!password) { toast('Password required'); return; }
+  closeModal();
+  toast('Syncing...');
+  try {
+    const r = await api('backup/sync', 'password=' + encodeURIComponent(password));
+    if (r.error) { toast('Sync failed: ' + esc(r.error)); return; }
+    if (r.synced === false) { toast(r.message || 'Already up to date', true); return; }
+    toast('Synced successfully' + (r.chunkCount ? ' (' + r.chunkCount + ' chunks)' : ''), true);
+    loadBackup();
+  } catch (e) { toast('Sync failed: ' + esc(e.message)); }
+}
+
+async function runSyncDirect() {
   toast('Syncing...');
   try {
     const r = await api('backup/sync');
@@ -730,6 +775,46 @@ async function downloadExport() {
     btn.disabled = false;
     btn.textContent = 'Download encrypted backup';
   }
+}
+
+async function doSetBackupPassword() {
+  const el = $('#backup-password');
+  const password = el ? el.value.trim() : '';
+  if (!password) { toast('Password is required'); return; }
+  toast('Setting password...');
+  try {
+    const r = await api('backup/set-password', 'password=' + encodeURIComponent(password));
+    if (r.error) { toast('Error: ' + esc(r.error)); return; }
+    toast('Encryption password set', true);
+    loadBackup();
+  } catch (e) { toast('Error: ' + esc(e.message)); }
+}
+
+async function doCompact() {
+  showModal(`
+    <h3>Compact backup</h3>
+    <p>This will merge all incremental chunks into a single full backup. Enter your encryption password to continue.</p>
+    <input class="modal-input" id="compact-password" type="password" placeholder="Encryption password" autofocus>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="runCompact()">Compact</button>
+    </div>
+  `);
+  setTimeout(() => { const el = $('#compact-password'); if (el) el.focus(); }, 50);
+}
+
+async function runCompact() {
+  const password = $('#compact-password').value.trim();
+  if (!password) { toast('Password required'); return; }
+  closeModal();
+  toast('Compacting...');
+  try {
+    const r = await api('backup/compact', 'password=' + encodeURIComponent(password));
+    if (r.error) { toast('Compact failed: ' + esc(r.error)); return; }
+    if (r.compacted === false) { toast(r.message || 'Nothing to compact'); return; }
+    toast('Compacted ' + r.oldChunks + ' chunks into 1', true);
+    loadBackup();
+  } catch (e) { toast('Compact failed: ' + esc(e.message)); }
 }
 
 

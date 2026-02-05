@@ -2,10 +2,14 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { hashPassword, verifyPassword } = require('./sync-crypto');
+const { createTransport, LocalTransport } = require('./transport');
+const SyncManager = require('./sync');
 
 /**
  * BackupManager — handles syncing version history to backup targets.
- * Targets: local path (mirror), cloud (stub), s3 (v2), git (legacy).
+ * Supports encrypted incremental chunk-based sync (local) and native git push.
  */
 class BackupManager {
   constructor(clawGit) {
@@ -38,7 +42,34 @@ class BackupManager {
       local: backup.local || null,
       cloud: backup.cloud || null,
       s3: backup.s3 || null,
+      passwordSet: !!backup.passwordHash,
+      workspaceId: backup.workspaceId || null,
+      chunkCount: backup.chunkCount || 0,
+      lastSyncCommit: backup.lastSyncCommit || null,
     };
+  }
+
+  /** Set encryption password (stores hash only) */
+  setPassword(password) {
+    if (!password) throw new Error('Password is required');
+    const config = this.claw.loadConfig();
+    if (!config.backup) config.backup = {};
+    config.backup.passwordHash = hashPassword(password);
+    this.claw.saveConfig(config);
+  }
+
+  /** Check if password is set */
+  hasPassword() {
+    const config = this.claw.loadConfig();
+    return !!(config.backup?.passwordHash);
+  }
+
+  /** Verify a password against stored hash */
+  checkPassword(password) {
+    const config = this.claw.loadConfig();
+    const hash = config.backup?.passwordHash;
+    if (!hash) return false;
+    return verifyPassword(password, hash);
   }
 
   /** Set backup target */
@@ -60,8 +91,16 @@ class BackupManager {
     if (type === 'local' && options.path) {
       const absPath = path.resolve(options.path);
       config.backup.local = { path: absPath };
-      // Init bare mirror if it doesn't exist
-      await this._initLocalMirror(absPath);
+      // Ensure directory exists
+      if (!fs.existsSync(absPath)) {
+        fs.mkdirSync(absPath, { recursive: true });
+      }
+      // Generate workspace ID if not set
+      if (!config.backup.workspaceId) {
+        const dirname = path.basename(this.dir);
+        const suffix = crypto.randomBytes(4).toString('hex');
+        config.backup.workspaceId = dirname + '-' + suffix;
+      }
     } else if (type === 'git' && options.url) {
       config.remote = options.url;
       await this.claw.setRemote(options.url);
@@ -77,8 +116,8 @@ class BackupManager {
     return this.getConfig();
   }
 
-  /** Sync to backup target (push) */
-  async sync() {
+  /** Sync to backup target */
+  async sync(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
     const target = backup.target;
@@ -87,21 +126,26 @@ class BackupManager {
 
     let result;
     if (target === 'local') {
-      result = await this._syncLocal(backup.local.path);
+      // Encrypted incremental sync
+      if (!password) throw new Error('Password required for encrypted sync');
+      const transport = createTransport(backup, this.claw);
+      const sm = new SyncManager(this.claw, transport, password);
+      result = await sm.sync();
     } else if (target === 'git') {
       await this.claw.push();
-      result = { ok: true, target: 'git' };
+      result = { ok: true, target: 'git', synced: true };
     } else if (target === 'cloud') {
       throw new Error('ClawKeep Cloud is coming soon');
     } else if (target === 's3') {
       throw new Error('S3 backup is not yet implemented');
     }
 
-    // Update lastSync
-    config.backup.lastSync = new Date().toISOString();
-    this.claw.saveConfig(config);
+    // Reload config (SyncManager may have saved changes)
+    const freshConfig = this.claw.loadConfig();
+    freshConfig.backup.lastSync = new Date().toISOString();
+    this.claw.saveConfig(freshConfig);
 
-    return { ...result, lastSync: config.backup.lastSync };
+    return { ...result, lastSync: freshConfig.backup.lastSync };
   }
 
   /** Pull from backup target */
@@ -112,15 +156,12 @@ class BackupManager {
 
     if (!target) throw new Error('No backup target configured');
 
-    if (target === 'local') {
-      await this.claw.git.fetch(backup.local.path, 'main');
-      return { ok: true };
-    } else if (target === 'git') {
+    if (target === 'git') {
       await this.claw.pull();
       return { ok: true };
     }
 
-    throw new Error(`Pull not supported for target: ${target}`);
+    throw new Error(`Pull not supported for target: ${target} (use 'backup restore' instead)`);
   }
 
   /** Test connection to backup target */
@@ -137,9 +178,14 @@ class BackupManager {
       const localPath = backup.local?.path;
       if (!localPath) return { ok: false, message: 'No local path configured' };
       if (!fs.existsSync(localPath)) return { ok: false, message: 'Path does not exist: ' + localPath };
-      // Check if it's a valid bare repo
-      const headPath = path.join(localPath, 'HEAD');
-      if (!fs.existsSync(headPath)) return { ok: false, message: 'Not a valid backup mirror at: ' + localPath };
+      // Check writable
+      try {
+        const testFile = path.join(localPath, '.clawkeep-test-' + Date.now());
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+      } catch {
+        return { ok: false, message: 'Path is not writable: ' + localPath };
+      }
       return { ok: true, message: 'Connected', latencyMs: Date.now() - start };
     } else if (target === 'git') {
       try {
@@ -157,28 +203,60 @@ class BackupManager {
     return { ok: false, message: 'Unknown target: ' + target };
   }
 
-  /** Initialize a bare mirror at a local path */
-  async _initLocalMirror(localPath) {
-    if (!fs.existsSync(localPath)) {
-      fs.mkdirSync(localPath, { recursive: true });
+  /** Compact chunks into single full bundle */
+  async compact(password) {
+    const config = this.claw.loadConfig();
+    const backup = config.backup || {};
+    if (backup.target !== 'local') throw new Error('Compact only supported for local target');
+    if (!password) throw new Error('Password required for compact');
+
+    const transport = createTransport(backup, this.claw);
+    const sm = new SyncManager(this.claw, transport, password);
+    return await sm.compact();
+  }
+
+  /** Get sync status (chunk count, sizes, etc.) */
+  async getSyncStatus(password) {
+    const config = this.claw.loadConfig();
+    const backup = config.backup || {};
+    if (backup.target !== 'local' || !password) {
+      return {
+        synced: false,
+        chunkCount: backup.chunkCount || 0,
+        lastSync: backup.lastSync || null,
+      };
     }
 
-    const headPath = path.join(localPath, 'HEAD');
-    if (!fs.existsSync(headPath)) {
-      // Clone as bare mirror
-      const simpleGit = require('simple-git');
-      await simpleGit().clone(this.dir, localPath, ['--bare', '--mirror']);
+    try {
+      const transport = createTransport(backup, this.claw);
+      const sm = new SyncManager(this.claw, transport, password);
+      return await sm.getStatus();
+    } catch {
+      return {
+        synced: false,
+        chunkCount: backup.chunkCount || 0,
+        lastSync: backup.lastSync || null,
+      };
     }
   }
 
-  /** Sync to local bare mirror */
-  async _syncLocal(localPath) {
-    if (!localPath) throw new Error('No local path configured');
-    if (!fs.existsSync(localPath)) {
-      await this._initLocalMirror(localPath);
-    }
-    await this.claw.git.push(localPath, '--all', ['--force']);
-    return { ok: true, target: 'local' };
+  /**
+   * Restore from an encrypted backup directory.
+   * @param {string} sourcePath - Path to the workspace backup dir (contains manifest.enc + chunks)
+   * @param {string} destDir - Where to restore
+   * @param {string} password - Decryption password
+   */
+  static async restoreFromBackup(sourcePath, destDir, password) {
+    if (!password) throw new Error('Password required for restore');
+    sourcePath = path.resolve(sourcePath);
+    if (!fs.existsSync(sourcePath)) throw new Error('Backup path does not exist: ' + sourcePath);
+
+    // Determine workspace ID from directory name
+    const workspaceId = path.basename(sourcePath);
+    const parentDir = path.dirname(sourcePath);
+    const transport = new LocalTransport(parentDir);
+
+    return await SyncManager.restoreFrom(transport, workspaceId, password, destDir);
   }
 }
 

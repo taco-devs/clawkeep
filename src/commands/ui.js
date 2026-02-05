@@ -129,13 +129,35 @@ function startServer(claw, dir, port, token, opts) {
       const options = JSON.parse(p.get('options') || '{}');
       return await bm.setTarget(type, options);
     },
-    'backup/sync': async () => {
+    'backup/sync': async (p) => {
       const bm = new BackupManager(claw);
-      return await bm.sync();
+      const password = p.get('password') || process.env.CLAWKEEP_PASSWORD || null;
+      return await bm.sync(password);
     },
     'backup/test': async () => {
       const bm = new BackupManager(claw);
       return await bm.test();
+    },
+    'backup/set-password': async (p) => {
+      const bm = new BackupManager(claw);
+      const password = p.get('password');
+      if (!password) return { error: 'password required' };
+      bm.setPassword(password);
+      return { ok: true };
+    },
+    'backup/has-password': async () => {
+      const bm = new BackupManager(claw);
+      return { set: bm.hasPassword() };
+    },
+    'backup/sync-status': async (p) => {
+      const bm = new BackupManager(claw);
+      const password = p.get('password') || process.env.CLAWKEEP_PASSWORD || null;
+      return await bm.getSyncStatus(password);
+    },
+    'backup/compact': async (p) => {
+      const bm = new BackupManager(claw);
+      const password = p.get('password') || process.env.CLAWKEEP_PASSWORD || null;
+      return await bm.compact(password);
     },
     'backup/watch-status': async () => {
       const watchPid = path.join(dir, '.clawkeep/watch.pid');
