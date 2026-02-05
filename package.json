@@ -1,7 +1,7 @@
 {
   "name": "clawkeep",
   "version": "0.1.0",
-  "description": "Git-backed memory persistence for AI agents",
+  "description": "Git-backed memory persistence for AI agents. Your agent's memory deserves version control.",
   "main": "src/index.js",
   "bin": {
     "clawkeep": "./bin/clawkeep.js"
@@ -17,20 +17,42 @@
     "memory",
     "persistence",
     "git",
+    "version-control",
     "openclaw",
     "clawdbot",
-    "nanobot"
+    "nanobot",
+    "claude",
+    "codex",
+    "llm",
+    "snapshot",
+    "restore",
+    "time-travel"
   ],
-  "author": "ClawKeep Team",
+  "author": "ClawKeep <hello@clawkeep.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taco-devs/clawkeep.git"
+  },
+  "homepage": "https://clawkeep.com",
+  "bugs": {
+    "url": "https://github.com/taco-devs/clawkeep/issues"
+  },
   "dependencies": {
-    "chokidar": "^3.6.0",
     "chalk": "^4.1.2",
+    "chokidar": "^3.6.0",
     "commander": "^12.0.0",
     "ora": "^5.4.1",
-    "simple-git": "^3.22.0"
+    "simple-git": "^3.22.0",
+    "tar": "^6.2.1"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
 }

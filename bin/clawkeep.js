@@ -2,30 +2,50 @@
 'use strict';
 
 const { program } = require('commander');
+const chalk = require('chalk');
 const pkg = require('../package.json');
+
+const LOGO = chalk.cyan(`
+   _____ _                 _  __              
+  / ____| |               | |/ /              
+ | |    | | __ ___      __| ' / ___  ___ _ __ 
+ | |    | |/ _\` \\ \\ /\\ / /|  < / _ \\/ _ \\ '_ \\ 
+ | |____| | (_| |\\ V  V / | . \\  __/  __/ |_) |
+  \\_____|_|\\__,_| \\_/\\_/  |_|\\_\\___|\\___| .__/ 
+                                         | |    
+                                         |_|    
+`);
 
 program
   .name('clawkeep')
-  .description('Git-backed memory persistence for AI agents')
-  .version(pkg.version);
+  .description(
+    chalk.dim('Git-backed memory persistence for AI agents') +
+    '\n' +
+    chalk.dim('  https://clawkeep.com')
+  )
+  .version(pkg.version, '-v, --version')
+  .addHelpText('beforeAll', LOGO);
 
-// init — initialize clawkeep in a directory
+// init
 program
   .command('init')
   .description('Initialize clawkeep tracking in the current directory')
   .option('-d, --dir <path>', 'Target directory to track', '.')
-  .option('--detect', 'Auto-detect agent framework', true)
+  .option('--no-detect', 'Skip auto-detection of agent framework')
+  .option('--name <name>', 'Set agent name manually')
+  .option('--framework <fw>', 'Set framework manually (openclaw|clawdbot|nanobot|generic)')
   .action((opts) => require('../src/commands/init')(opts));
 
-// snap — commit current state
+// snap
 program
   .command('snap')
   .description('Snapshot current state (commit all changes)')
   .option('-m, --message <msg>', 'Custom snapshot message')
   .option('-d, --dir <path>', 'Target directory', '.')
+  .option('-q, --quiet', 'Minimal output', false)
   .action((opts) => require('../src/commands/snap')(opts));
 
-// diff — show what changed
+// diff
 program
   .command('diff')
   .description('Show changes since last snapshot')
@@ -33,68 +53,70 @@ program
   .option('--stat', 'Show file-level summary only', false)
   .action((opts) => require('../src/commands/diff')(opts));
 
-// log — show history
+// log
 program
   .command('log')
-  .description('Show snapshot history')
+  .description('Show snapshot history timeline')
   .option('-d, --dir <path>', 'Target directory', '.')
-  .option('-n, --limit <n>', 'Number of entries to show', '20')
-  .option('--oneline', 'Compact format', false)
+  .option('-n, --limit <n>', 'Number of entries', '20')
+  .option('--oneline', 'Compact single-line format', false)
+  .option('--json', 'Output as JSON', false)
   .action((opts) => require('../src/commands/log')(opts));
 
-// restore — go back to a point in time
+// restore
 program
   .command('restore [ref]')
-  .description('Restore to a specific snapshot (by hash or relative ref)')
+  .description('Restore to a specific snapshot (by hash, HEAD~N, or interactive)')
   .option('-d, --dir <path>', 'Target directory', '.')
-  .option('--hard', 'Discard current changes', false)
+  .option('--hard', 'Discard current changes (destructive)', false)
   .action((ref, opts) => require('../src/commands/restore')(ref, opts));
 
-// push — sync to remote
+// push
 program
   .command('push')
   .description('Push snapshots to remote repository')
   .option('-d, --dir <path>', 'Target directory', '.')
-  .option('-r, --remote <url>', 'Remote repository URL')
+  .option('-r, --remote <url>', 'Set remote repository URL')
   .action((opts) => require('../src/commands/push')(opts));
 
-// pull — pull from remote
+// pull
 program
   .command('pull')
   .description('Pull latest snapshots from remote')
   .option('-d, --dir <path>', 'Target directory', '.')
   .action((opts) => require('../src/commands/pull')(opts));
 
-// watch — auto-snap on file changes
+// watch
 program
   .command('watch')
   .description('Watch for file changes and auto-snapshot')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--interval <ms>', 'Debounce interval in ms', '5000')
   .option('--push', 'Auto-push after each snap', false)
+  .option('-q, --quiet', 'Minimal output', false)
   .action((opts) => require('../src/commands/watch')(opts));
 
-// export — encrypted archive
+// export
 program
   .command('export')
-  .description('Export encrypted archive of all history')
+  .description('Export encrypted archive of full history')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('-o, --output <file>', 'Output file path')
-  .option('-p, --password <pass>', 'Encryption password (or set CLAWKEEP_PASSWORD)')
+  .option('-p, --password <pass>', 'Encryption password (or CLAWKEEP_PASSWORD env)')
   .action((opts) => require('../src/commands/export')(opts));
 
-// import — restore from encrypted archive
+// import
 program
   .command('import <file>')
-  .description('Import from encrypted archive')
-  .option('-d, --dir <path>', 'Target directory', '.')
-  .option('-p, --password <pass>', 'Decryption password (or set CLAWKEEP_PASSWORD)')
+  .description('Import and restore from encrypted archive')
+  .option('-d, --dir <path>', 'Restore destination', '.')
+  .option('-p, --password <pass>', 'Decryption password (or CLAWKEEP_PASSWORD env)')
   .action((file, opts) => require('../src/commands/import')(file, opts));
 
-// status — show current state
+// status
 program
   .command('status')
-  .description('Show tracking status and agent info')
+  .description('Show tracking status, agent info, and stats')
   .option('-d, --dir <path>', 'Target directory', '.')
   .action((opts) => require('../src/commands/status')(opts));
 

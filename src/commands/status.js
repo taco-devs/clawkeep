@@ -11,43 +11,63 @@ module.exports = async function status(opts) {
     const claw = new ClawGit(dir);
 
     if (!(await claw.isInitialized())) {
-      console.log(chalk.yellow('ClawKeep is not initialized in this directory.'));
-      console.log(chalk.dim('Run `clawkeep init` to start tracking.'));
+      console.log('');
+      console.log(chalk.yellow('  ClawKeep is not initialized here.'));
+      console.log(chalk.dim('  Run `clawkeep init` to start tracking.'));
+      console.log('');
       return;
     }
 
     const config = claw.loadConfig();
     const gitStatus = await claw.status();
-    const history = await claw.log(1);
+    const stats = await claw.getStats();
 
-    console.log(chalk.bold('\n🐾 ClawKeep Status\n'));
-    console.log(`  Framework:    ${chalk.cyan(config.framework)}`);
-    console.log(`  Agent:        ${chalk.cyan(config.agentName)}`);
-    console.log(`  Secrets:      ${chalk.yellow(config.trackSecrets ? 'tracked' : 'excluded')}`);
-    console.log(`  Remote:       ${config.remote ? chalk.green(config.remote) : chalk.dim('not configured')}`);
-    console.log(`  Version:      ${chalk.dim(config.version)}`);
+    console.log('');
+    console.log(chalk.bold('  🐾 ClawKeep Status'));
     console.log('');
 
-    if (gitStatus.clean) {
-      console.log(`  State:        ${chalk.green('● clean')} — no pending changes`);
-    } else {
-      console.log(`  State:        ${chalk.yellow('● modified')} — ${gitStatus.total} file(s) changed`);
-      if (gitStatus.modified.length > 0) {
-        console.log(`  Modified:     ${chalk.yellow(gitStatus.modified.join(', '))}`);
-      }
-      if (gitStatus.added.length > 0) {
-        console.log(`  New:          ${chalk.green(gitStatus.added.join(', '))}`);
-      }
-      if (gitStatus.deleted.length > 0) {
-        console.log(`  Deleted:      ${chalk.red(gitStatus.deleted.join(', '))}`);
-      }
+    // Agent info
+    console.log(chalk.dim('  ── Agent ──────────────────────'));
+    console.log(`  Name:        ${chalk.cyan(config.agentName)}`);
+    console.log(`  Framework:   ${chalk.white(config.framework)}`);
+    console.log(`  Secrets:     ${config.trackSecrets ? chalk.green('✓ tracked') : chalk.yellow('✗ excluded')}`);
+    console.log(`  Remote:      ${config.remote ? chalk.blue(config.remote) : chalk.dim('none')}`);
+
+    // Stats
+    console.log('');
+    console.log(chalk.dim('  ── Stats ──────────────────────'));
+    console.log(`  Snapshots:   ${chalk.white(stats.totalSnaps)}`);
+    console.log(`  Files:       ${chalk.white(stats.trackedFiles)}`);
+    console.log(`  Tracking:    ${stats.daysTracked > 0 ? chalk.white(stats.daysTracked + ' day(s)') : chalk.dim('today')}`);
+
+    if (stats.lastSnap) {
+      const ago = _timeAgo(new Date(stats.lastSnap));
+      console.log(`  Last snap:   ${chalk.dim(ago)}`);
     }
 
-    if (history.length > 0) {
-      const last = history[0];
-      console.log(`  Last snap:    ${chalk.dim(last.date)} — ${last.message}`);
+    // Current state
+    console.log('');
+    console.log(chalk.dim('  ── Changes ────────────────────'));
+    if (gitStatus.clean) {
+      console.log(`  ${chalk.green('●')} Clean — no pending changes`);
     } else {
-      console.log(`  Last snap:    ${chalk.dim('none')}`);
+      console.log(`  ${chalk.yellow('●')} ${gitStatus.total} file(s) changed since last snap`);
+      
+      const show = gitStatus.files.slice(0, 8);
+      for (const f of show) {
+        let icon, color;
+        if (f.working_dir === '?' || f.index === '?') {
+          icon = '+'; color = chalk.green;
+        } else if (f.working_dir === 'D' || f.index === 'D') {
+          icon = '-'; color = chalk.red;
+        } else {
+          icon = '~'; color = chalk.yellow;
+        }
+        console.log(`    ${color(icon)} ${chalk.dim(f.path)}`);
+      }
+      if (gitStatus.files.length > 8) {
+        console.log(chalk.dim(`    ... and ${gitStatus.files.length - 8} more`));
+      }
     }
 
     console.log('');
@@ -56,3 +76,17 @@ module.exports = async function status(opts) {
     process.exit(1);
   }
 };
+
+function _timeAgo(date) {
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toISOString().substring(0, 10);
+}
