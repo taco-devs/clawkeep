@@ -52,6 +52,7 @@
   "files": [
     "bin/",
     "src/",
+    "ui/",
     "README.md",
     "LICENSE"
   ]

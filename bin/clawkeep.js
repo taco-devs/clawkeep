@@ -119,6 +119,9 @@ program
   .description('Launch the web dashboard')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--port <port>', 'Port number', '3333')
+  .option('--host <host>', 'Bind address', '0.0.0.0')
+  .option('--daemon', 'Run in background')
+  .option('--stop', 'Stop background dashboard')
   .action((opts) => require('../src/commands/ui')(opts));
 
 // status
