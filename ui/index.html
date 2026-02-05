@@ -8,107 +8,61 @@
 </head>
 <body>
 <div class="app">
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-brand">
       <span class="brand-icon">🐾</span>
       <span class="brand-text">ClawKeep</span>
     </div>
     <nav class="sidebar-nav">
-      <button class="nav-item active" data-tab="overview">
-        <span class="nav-icon">◉</span> Overview
-      </button>
-      <button class="nav-item" data-tab="timeline">
-        <span class="nav-icon">◷</span> Timeline
-      </button>
-      <button class="nav-item" data-tab="files">
-        <span class="nav-icon">⊞</span> Files
-      </button>
-      <button class="nav-item" data-tab="diff">
-        <span class="nav-icon">±</span> Changes
-      </button>
+      <button class="nav-item active" data-tab="overview"><span class="nav-icon">◉</span> Overview</button>
+      <button class="nav-item" data-tab="commits"><span class="nav-icon">⊙</span> Commits</button>
+      <button class="nav-item" data-tab="files"><span class="nav-icon">≡</span> Code</button>
+      <button class="nav-item" data-tab="diff"><span class="nav-icon">±</span> Changes</button>
     </nav>
     <div class="sidebar-footer">
       <div id="sidebar-agent" class="sidebar-agent"></div>
-      <a href="https://clawkeep.com" class="sidebar-link" target="_blank">clawkeep.com</a>
+      <a class="sidebar-link" href="https://clawkeep.com" target="_blank">clawkeep.com</a>
     </div>
   </aside>
 
-  <!-- Main -->
   <main class="main">
-    <!-- Top bar -->
     <header class="topbar">
-      <div class="topbar-left">
-        <h1 id="page-title">Overview</h1>
-      </div>
+      <div><h1 id="page-title">Overview</h1></div>
       <div class="topbar-right">
         <span id="last-updated" class="topbar-meta"></span>
-        <button class="btn btn-ghost" onclick="refresh()">
-          <span class="btn-icon">↻</span> Refresh
-        </button>
-        <button class="btn btn-primary" onclick="takeSnap()">
-          <span class="btn-icon">⊕</span> Snapshot
-        </button>
+        <button class="btn btn-ghost" onclick="refresh()">↻ Refresh</button>
+        <button class="btn btn-primary" onclick="takeSnap()">✚ Snapshot</button>
       </div>
     </header>
 
-    <!-- Content -->
     <div class="content">
-      <!-- Overview -->
       <section id="tab-overview">
-        <div class="stats-grid" id="stats-grid"></div>
+        <div id="stats-grid" class="stats-grid"></div>
         <div class="grid-2">
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Pending Changes</h3>
-              <span id="changes-count" class="badge"></span>
-            </div>
-            <div id="changes-body" class="panel-body"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Recent Activity</h3>
-            </div>
-            <div id="recent-body" class="panel-body"></div>
-          </div>
+          <div class="box"><div class="box-header">Pending changes <span id="ch-count" class="count"></span></div><div id="changes-body" class="box-body"></div></div>
+          <div class="box"><div class="box-header">Recent commits</div><div id="recent-body" class="box-body"></div></div>
         </div>
       </section>
 
-      <!-- Timeline -->
-      <section id="tab-timeline" class="hidden">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Snapshot Timeline</h3>
-            <span id="tl-count" class="badge"></span>
-          </div>
-          <div id="tl-body" class="panel-body"></div>
-        </div>
+      <section id="tab-commits" class="hidden">
+        <div class="box"><div class="box-header">Commits <span id="commits-count" class="count"></span></div><div id="commits-body" class="box-body"></div></div>
       </section>
 
-      <!-- Files -->
       <section id="tab-files" class="hidden">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>File Browser</h3>
-            <div id="fb-breadcrumb" class="breadcrumb"></div>
-          </div>
-          <div id="fb-body" class="panel-body panel-flush"></div>
+        <div class="box">
+          <div class="box-header"><div id="fb-breadcrumb" class="breadcrumb"></div></div>
+          <div id="fb-body" class="box-body"></div>
         </div>
-        <div id="file-viewer"></div>
+        <div id="file-viewer" class="file-viewer"></div>
       </section>
 
-      <!-- Diff -->
       <section id="tab-diff" class="hidden">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Uncommitted Changes</h3>
-          </div>
-          <div id="diff-body" class="panel-body panel-flush"></div>
-        </div>
+        <div class="box"><div class="box-header">Uncommitted changes</div><div id="diff-body" class="box-body"></div></div>
       </section>
     </div>
   </main>
 </div>
+<div id="toast-wrap" class="toast-wrap"></div>
 <script src="/app.js"></script>
 </body>
 </html>

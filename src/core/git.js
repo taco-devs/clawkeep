@@ -217,6 +217,52 @@ class ClawGit {
     };
   }
 
+  /** Get files changed in a specific commit */
+  async showCommit(hash) {
+    try {
+      const stat = await this.git.show([hash, '--stat', '--format=%H|%ai|%s|%an']);
+      const lines = stat.trim().split('\n');
+      const [h, date, message, author] = (lines[0] || '').split('|');
+      const files = lines.slice(1).filter(l => l.trim() && !l.includes('changed')).map(l => {
+        const match = l.trim().match(/^(.+?)\s+\|\s+(\d+)/);
+        return match ? { path: match[1].trim(), changes: parseInt(match[2]) } : null;
+      }).filter(Boolean);
+      const summary = lines[lines.length - 1] || '';
+      return { hash: h, date, message, author, files, summary };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** Get diff for a specific commit */
+  async commitDiff(hash) {
+    try {
+      return await this.git.show([hash, '--format=']);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** Get last commit info for files in a directory */
+  async fileHistory(dir) {
+    try {
+      const files = await this.git.raw(['ls-tree', '--name-only', 'HEAD', dir ? dir + '/' : '']);
+      const result = {};
+      const names = files.trim().split('\n').filter(Boolean).slice(0, 50);
+      for (const f of names) {
+        try {
+          const log = await this.git.log({ maxCount: 1, file: f, '--format': '%ai|%s' });
+          if (log.latest) {
+            result[f] = { date: log.latest.date, message: log.latest.message };
+          }
+        } catch {}
+      }
+      return result;
+    } catch {
+      return {};
+    }
+  }
+
   /** Restore to a specific point */
   async restore(ref, hard = false) {
     if (hard) {

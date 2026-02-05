@@ -1,29 +1,20 @@
-/* ClawKeep Dashboard — v3 UX-first */
+/* ClawKeep — GitHub-style UI */
 'use strict';
 
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
-const q = (extra) => '?token=' + TOKEN + (extra ? '&' + extra : '');
-async function api(path, params) {
-  const res = await fetch('/api/' + path + q(params || ''));
-  return res.json();
-}
-
-/* Helpers */
+const Q = (x) => '?token=' + TOKEN + (x ? '&' + x : '');
+const api = async (p, q) => (await fetch('/api/' + p + Q(q))).json();
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-
-function esc(s) { return !s ? '' : s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+const esc = (s) => !s ? '' : s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function timeAgo(d) {
   const ms = Date.now() - new Date(d).getTime();
-  const m = Math.floor(ms / 60000), h = Math.floor(ms / 3600000), dy = Math.floor(ms / 86400000);
-  if (m < 1) return 'just now';
-  if (m === 1) return '1 min ago';
-  if (m < 60) return m + ' min ago';
-  if (h === 1) return '1 hour ago';
-  if (h < 24) return h + ' hours ago';
-  if (dy === 1) return 'yesterday';
-  if (dy < 7) return dy + ' days ago';
+  const m = Math.floor(ms / 60e3), h = Math.floor(ms / 36e5), dy = Math.floor(ms / 864e5);
+  if (m < 1) return 'now';
+  if (m < 60) return m + (m === 1 ? ' minute' : ' minutes') + ' ago';
+  if (h < 24) return h + (h === 1 ? ' hour' : ' hours') + ' ago';
+  if (dy < 30) return dy + (dy === 1 ? ' day' : ' days') + ' ago';
   return new Date(d).toLocaleDateString();
 }
 
@@ -34,74 +25,46 @@ function fmtSize(b) {
   return (b / 1048576).toFixed(1) + ' MB';
 }
 
-function fmtNum(n) { return n != null ? n.toLocaleString() : '—'; }
-
-/* Toast notifications */
-function toast(msg, type = 'info') {
-  let container = $('.toast-container');
-  if (!container) {
-    container = document.createElement('div');
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-  }
+function toast(msg, ok) {
   const el = document.createElement('div');
-  el.className = 'toast ' + type;
+  el.className = 'toast' + (ok ? ' toast-ok' : '');
   el.innerHTML = msg;
-  container.appendChild(el);
+  $('#toast-wrap').appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); }, 3000);
 }
 
-/* Simple markdown renderer */
 function renderMarkdown(text) {
-  let html = esc(text);
-  // Headers
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  // Bold & italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Code blocks
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-  // Inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  // Lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
-  // Blockquotes
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-  // HR
-  html = html.replace(/^---$/gm, '<hr>');
-  // Tables (basic)
-  html = html.replace(/^\|(.+)\|$/gm, (match, content) => {
-    const cells = content.split('|').map(c => c.trim());
-    if (cells.every(c => /^[-:]+$/.test(c))) return '';
-    const tag = 'td';
-    return '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+  let h = esc(text);
+  h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  h = h.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
+  h = h.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  h = h.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  h = h.replace(/^---$/gm, '<hr>');
+  h = h.replace(/^\|(.+)\|$/gm, (m, c) => {
+    const cells = c.split('|').map(x => x.trim());
+    if (cells.every(x => /^[-:]+$/.test(x))) return '';
+    return '<tr>' + cells.map(x => '<td>' + x + '</td>').join('') + '</tr>';
   });
-  html = html.replace(/(<tr>.*<\/tr>\n?)+/g, '<table>$&</table>');
-  // Paragraphs
-  html = html.replace(/\n\n/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-  html = html.replace(/<p><(h[123]|pre|ul|ol|blockquote|table|hr)/g, '<$1');
-  html = html.replace(/<\/(h[123]|pre|ul|ol|blockquote|table)><\/p>/g, '</$1>');
-  return html;
+  h = h.replace(/(<tr>.*<\/tr>\n?)+/g, '<table>$&</table>');
+  return h;
 }
 
-/* Tab navigation */
+/* Tabs */
 $$('.nav-item').forEach(btn => {
   btn.addEventListener('click', () => {
     $$('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    const titles = { overview: 'Overview', timeline: 'Timeline', files: 'Files', diff: 'Changes' };
-    $('#page-title').textContent = titles[tab] || tab;
-    ['overview', 'timeline', 'files', 'diff'].forEach(id =>
-      $('#tab-' + id).classList.toggle('hidden', id !== tab)
-    );
-    if (tab === 'timeline') loadTimeline();
+    $('#page-title').textContent = { overview: 'Overview', commits: 'Commits', files: 'Code', diff: 'Changes' }[tab];
+    ['overview', 'commits', 'files', 'diff'].forEach(id => $('#tab-' + id).classList.toggle('hidden', id !== tab));
+    if (tab === 'commits') loadCommits();
     if (tab === 'files') loadFiles('.');
     if (tab === 'diff') loadDiff();
   });
@@ -112,115 +75,93 @@ async function loadOverview() {
   const data = await api('status');
   const c = data.config, s = data.stats, gs = data.gitStatus;
 
-  // Sidebar info
-  $('#sidebar-agent').innerHTML =
-    `<strong>${esc(c.agentName)}</strong><span class="agent-fw">${c.framework}</span>`;
+  $('#sidebar-agent').innerHTML = `<strong>${esc(c.agentName)}</strong><span class="agent-fw">${c.framework}</span>`;
 
-  // Stats
   $('#stats-grid').innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Snapshots</div>
-      <div class="stat-value cyan">${fmtNum(s.totalSnaps)}</div>
-      <div class="stat-sub">total taken</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Files Tracked</div>
-      <div class="stat-value cyan">${fmtNum(s.trackedFiles)}</div>
-      <div class="stat-sub">in workspace</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Days Active</div>
-      <div class="stat-value cyan">${s.daysTracked || '< 1'}</div>
-      <div class="stat-sub">${s.lastSnap ? 'last ' + timeAgo(s.lastSnap) : 'no snaps yet'}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Status</div>
-      <div class="stat-value ${gs.clean ? 'green' : 'cyan'}">${gs.clean ? '✓' : gs.total}</div>
-      <div class="stat-sub">${gs.clean ? 'all committed' : 'uncommitted change' + (gs.total > 1 ? 's' : '')}</div>
-    </div>
+    <div class="stat-card"><div class="stat-label">Snapshots</div><div class="stat-value">${s.totalSnaps.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Files tracked</div><div class="stat-value">${s.trackedFiles.toLocaleString()}</div></div>
+    <div class="stat-card"><div class="stat-label">Days active</div><div class="stat-value">${s.daysTracked || '< 1'}</div></div>
+    <div class="stat-card"><div class="stat-label">Status</div><div class="stat-value" style="color:${gs.clean ? 'var(--green)' : 'var(--yellow)'}">${gs.clean ? 'Clean' : gs.total + ' changed'}</div></div>
   `;
 
   // Changes
   if (gs.clean) {
-    $('#changes-count').textContent = '';
-    $('#changes-body').innerHTML = '<div class="empty-state"><span class="es-icon">✓</span><div class="es-text">All changes committed</div><div class="es-sub">Your workspace is clean</div></div>';
+    $('#ch-count').textContent = '';
+    $('#changes-body').innerHTML = '<div class="empty">✓ Working tree clean</div>';
   } else {
-    $('#changes-count').textContent = gs.total;
-    const items = (gs.files || []).slice(0, 15).map(f => {
-      let cls = 'ch-mod', icon = '~', label = 'modified';
-      if (f.working_dir === '?' || f.index === '?') { cls = 'ch-add'; icon = '+'; label = 'new'; }
-      else if (f.working_dir === 'D' || f.index === 'D') { cls = 'ch-del'; icon = '−'; label = 'deleted'; }
-      return `<div class="change-item" title="${label}"><span class="change-icon ${cls}">${icon}</span><span class="change-path">${esc(f.path)}</span></div>`;
+    $('#ch-count').textContent = gs.total;
+    $('#changes-body').innerHTML = (gs.files || []).slice(0, 15).map(f => {
+      let cls = 'cb-m', label = 'M';
+      if (f.working_dir === '?' || f.index === '?') { cls = 'cb-a'; label = 'A'; }
+      else if (f.working_dir === 'D' || f.index === 'D') { cls = 'cb-d'; label = 'D'; }
+      return `<div class="change-row"><span class="change-badge ${cls}">${label}</span><span class="change-path">${esc(f.path)}</span></div>`;
     }).join('');
-    const more = gs.total > 15 ? `<div style="padding:8px 0 0;font-size:11px;color:var(--t4)">+ ${gs.total - 15} more files</div>` : '';
-    $('#changes-body').innerHTML = items + more;
   }
 
-  // Recent activity
-  const entries = await api('log', 'limit=6');
-  if (!entries.length) {
-    $('#recent-body').innerHTML = '<div class="empty-state"><span class="es-icon">◷</span><div class="es-text">No snapshots yet</div><div class="es-sub">Take your first snapshot</div></div>';
-  } else {
-    $('#recent-body').innerHTML = '<div style="margin:-14px -18px">' + renderTimeline(entries, true) + '</div>';
-  }
+  // Recent commits
+  const entries = await api('log', 'limit=5');
+  $('#recent-body').innerHTML = entries.length
+    ? entries.map((e, i) => commitRow(e, i === 0)).join('')
+    : '<div class="empty">No commits yet</div>';
 
-  $('#last-updated').textContent = new Date().toLocaleTimeString();
+  $('#last-updated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-/* ═══ TIMELINE ═══ */
-let expandedSnap = null;
+/* ═══ COMMITS ═══ */
+let expandedHash = null;
 
-async function loadTimeline() {
+async function loadCommits() {
   const entries = await api('log', 'limit=100');
-  $('#tl-count').textContent = entries.length;
-  if (!entries.length) {
-    $('#tl-body').innerHTML = '<div class="empty-state"><span class="es-icon">◷</span><div class="es-text">No snapshots yet</div></div>';
-    return;
-  }
-  $('#tl-body').innerHTML = '<div style="margin:-14px -18px">' + renderTimeline(entries) + '</div>';
+  $('#commits-count').textContent = entries.length;
+  if (!entries.length) { $('#commits-body').innerHTML = '<div class="empty">No commits yet</div>'; return; }
+  $('#commits-body').innerHTML = entries.map((e, i) => commitRow(e, i === 0, true)).join('');
 }
 
-function renderTimeline(entries, compact) {
-  return entries.map((e, i) => {
-    const isExpanded = expandedSnap === e.hash;
-    return `
-    <div class="tl-item" onclick="toggleSnap('${e.hash}')">
-      <div class="tl-gutter">
-        <div class="tl-dot ${i === 0 ? 'latest' : ''}"></div>
-        ${i < entries.length - 1 ? '<div class="tl-stem"></div>' : ''}
-      </div>
-      <div class="tl-body">
-        <div class="tl-row">
-          <span class="tl-hash">${e.hash.substring(0, 8)}</span>
-          <span class="tl-time">${timeAgo(e.date)}</span>
+function commitRow(e, isLatest, expandable) {
+  const short = e.hash.substring(0, 7);
+  const onclick = expandable ? ` onclick="toggleCommit('${e.hash}')"` : '';
+  return `
+    <div class="commit-row"${onclick}>
+      <div class="commit-dot ${isLatest ? 'latest' : 'old'}"></div>
+      <div class="commit-body">
+        <div class="commit-msg">${esc(e.message)}</div>
+        <div class="commit-meta">
+          <span>${e.author || 'agent'} committed ${timeAgo(e.date)}</span>
         </div>
-        <div class="tl-msg">${esc(e.message)}</div>
-        <div id="snap-${e.hash.substring(0,8)}" class="${isExpanded ? '' : 'hidden'}"></div>
       </div>
-    </div>`;
-  }).join('');
+      <span class="commit-hash">${short}</span>
+    </div>
+    <div id="cd-${short}" class="hidden"></div>`;
 }
 
-async function toggleSnap(hash) {
-  const short = hash.substring(0, 8);
-  const el = $(`#snap-${short}`);
+async function toggleCommit(hash) {
+  const short = hash.substring(0, 7);
+  const el = $(`#cd-${short}`);
   if (!el) return;
 
-  if (expandedSnap === hash) {
+  if (expandedHash === hash) {
     el.classList.add('hidden');
-    expandedSnap = null;
+    expandedHash = null;
     return;
   }
 
-  expandedSnap = hash;
-  $$('[id^="snap-"]').forEach(e => e.classList.add('hidden'));
+  $$('[id^="cd-"]').forEach(e => e.classList.add('hidden'));
+  expandedHash = hash;
   el.classList.remove('hidden');
-  el.innerHTML = '<div class="tl-detail" style="color:var(--t4)">Loading...</div>';
+  el.innerHTML = '<div class="commit-detail" style="color:var(--t3)">Loading...</div>';
 
-  // We don't have per-commit file list from the API yet, show a note
-  el.innerHTML = `<div class="tl-detail">
-    <div style="font-size:11px;color:var(--t3);margin-bottom:4px">Snapshot <code style="color:var(--yellow)">${short}</code></div>
-    <div style="font-size:11px;color:var(--t4)">Click the Changes tab to see current diff</div>
+  const data = await api('commit', 'hash=' + hash);
+  if (!data || !data.files || !data.files.length) {
+    el.innerHTML = '<div class="commit-detail"><div style="color:var(--t4)">No file details available</div></div>';
+    return;
+  }
+
+  el.innerHTML = `<div class="commit-detail">
+    <div style="margin-bottom:8px;font-size:12px;color:var(--t3)">${data.files.length} file(s) changed</div>
+    <ul class="commit-detail-files">${data.files.map(f => {
+      return `<li class="cd-file"><span class="cd-badge cd-modified">M</span><span style="font-family:var(--mono);font-size:12px;color:var(--t2)">${esc(f.path)}</span><span style="font-size:11px;color:var(--t4);margin-left:auto">${f.changes} changes</span></li>`;
+    }).join('')}</ul>
+    ${data.summary ? `<div style="margin-top:8px;font-size:11px;color:var(--t4)">${esc(data.summary)}</div>` : ''}
   </div>`;
 }
 
@@ -230,88 +171,73 @@ let currentPath = '.';
 async function loadFiles(p) {
   currentPath = p;
   const files = await api('files', 'path=' + encodeURIComponent(p));
-
-  if (files.error) {
-    $('#fb-body').innerHTML = `<div class="empty-state">${esc(files.error)}</div>`;
-    return;
-  }
+  if (files.error) { $('#fb-body').innerHTML = `<div class="empty">${esc(files.error)}</div>`; return; }
 
   // Breadcrumb
-  const parts = [{ name: '~', path: '.' }];
+  const parts = [{ name: 'root', path: '.' }];
   if (p !== '.') {
     const segs = p.split('/').filter(Boolean);
     let acc = '';
-    segs.forEach(s => { acc = acc ? acc + '/' + s : s; parts.push({ name: s, path: acc }); });
+    segs.forEach((s, i) => { acc = acc ? acc + '/' + s : s; parts.push({ name: s, path: acc }); });
   }
+  const last = parts.length - 1;
   $('#fb-breadcrumb').innerHTML = parts.map((pt, i) =>
-    `<span class="bc-seg" onclick="loadFiles('${pt.path.replace(/'/g, "\\'")}')">${esc(pt.name)}</span>` +
-    (i < parts.length - 1 ? '<span class="bc-sep">/</span>' : '')
+    i === last && i > 0
+      ? `<span class="bc-current">${esc(pt.name)}</span>`
+      : `<span class="bc-seg" onclick="loadFiles('${pt.path.replace(/'/g, "\\'")}')">${esc(pt.name)}</span><span class="bc-sep">/</span>`
   ).join('');
 
   // Rows
   const rows = [];
   if (p !== '.') {
     const parent = p.split('/').slice(0, -1).join('/') || '.';
-    rows.push(`<div class="fb-row" onclick="loadFiles('${parent.replace(/'/g, "\\'")}')">
-      <span class="fb-icon">↩</span><span class="fb-name is-dir">..</span></div>`);
+    rows.push(`<div class="file-row" onclick="loadFiles('${parent.replace(/'/g, "\\'")}')">
+      <span class="file-icon">📁</span><span class="file-name is-dir">..</span></div>`);
   }
   files.forEach(f => {
     if (f.type === 'dir') {
-      rows.push(`<div class="fb-row" onclick="loadFiles('${f.path.replace(/'/g, "\\'")}')">
-        <span class="fb-icon">📁</span><span class="fb-name is-dir">${esc(f.name)}</span></div>`);
+      rows.push(`<div class="file-row" onclick="loadFiles('${f.path.replace(/'/g, "\\'")}')">
+        <span class="file-icon">📁</span><span class="file-name is-dir">${esc(f.name)}</span>
+        <span class="file-msg"></span><span class="file-time"></span></div>`);
     } else {
-      rows.push(`<div class="fb-row" onclick="viewFile('${f.path.replace(/'/g, "\\'")}')">
-        <span class="fb-icon">${fileIcon(f.name)}</span>
-        <span class="fb-name is-file">${esc(f.name)}</span>
-        <span class="fb-meta">${fmtSize(f.size)}</span></div>`);
+      rows.push(`<div class="file-row" onclick="viewFile('${f.path.replace(/'/g, "\\'")}')">
+        <span class="file-icon">${fIcon(f.name)}</span>
+        <span class="file-name">${esc(f.name)}</span>
+        <span class="file-msg"></span>
+        <span class="file-time">${fmtSize(f.size)}</span></div>`);
     }
   });
   $('#fb-body').innerHTML = rows.join('');
   $('#file-viewer').innerHTML = '';
 }
 
-function fileIcon(name) {
-  const ext = name.split('.').pop().toLowerCase();
-  return { md:'📝', json:'{}', js:'⚡', ts:'⚡', py:'🐍', yml:'⚙️', yaml:'⚙️',
-    env:'🔒', sh:'⚡', css:'🎨', html:'🌐', txt:'📄', log:'📋',
-    png:'🖼️', jpg:'🖼️', gif:'🖼️', svg:'🖼️', toml:'⚙️' }[ext] || '📄';
+function fIcon(n) {
+  const e = n.split('.').pop().toLowerCase();
+  return { md:'📝', json:'📋', js:'📜', ts:'📜', py:'🐍', yml:'⚙️', yaml:'⚙️', env:'🔒', sh:'⚙️', css:'🎨', html:'🌐' }[e] || '📄';
 }
 
 async function viewFile(p) {
   const data = await api('file', 'path=' + encodeURIComponent(p));
-  if (data.error) {
-    $('#file-viewer').innerHTML = `<div class="file-panel"><div class="file-panel-head"><span class="fp-path">${esc(data.error)}</span></div></div>`;
-    return;
-  }
-  if (data.binary) {
-    $('#file-viewer').innerHTML = `<div class="file-panel">
-      <div class="file-panel-head"><span class="fp-path">${esc(p)}</span><span class="fp-size">${fmtSize(data.size)}</span></div>
-      <div class="file-content" style="text-align:center;color:var(--t4);padding:40px">Binary file · ${fmtSize(data.size)}</div></div>`;
-    return;
-  }
+  if (data.error) { $('#file-viewer').innerHTML = `<div class="box"><div class="box-body-pad empty">${esc(data.error)}</div></div>`; return; }
+  if (data.binary) { $('#file-viewer').innerHTML = `<div class="box"><div class="fv-header"><span class="fv-path">${esc(p)}</span></div><div class="box-body-pad empty">Binary file · ${fmtSize(data.size)}</div></div>`; return; }
 
-  const isMarkdown = p.endsWith('.md');
-  const closeBtn = `<button class="fp-close" onclick="$('#file-viewer').innerHTML=''" title="Close">✕</button>`;
+  const close = `<button class="fv-close" onclick="$('#file-viewer').innerHTML=''" title="Close">✕</button>`;
+  const isMd = p.endsWith('.md');
 
-  if (isMarkdown) {
-    $('#file-viewer').innerHTML = `<div class="file-panel">
-      <div class="file-panel-head"><span class="fp-path">${esc(p)}</span><div style="display:flex;gap:8px;align-items:center"><span class="fp-size">${fmtSize(data.size)}</span>${closeBtn}</div></div>
-      <div class="md-render">${renderMarkdown(data.content)}</div></div>`;
-  } else {
-    $('#file-viewer').innerHTML = `<div class="file-panel">
-      <div class="file-panel-head"><span class="fp-path">${esc(p)}</span><div style="display:flex;gap:8px;align-items:center"><span class="fp-size">${fmtSize(data.size)}</span>${closeBtn}</div></div>
-      <div class="file-content">${esc(data.content)}</div></div>`;
-  }
-
-  // Scroll to viewer
-  $('#file-viewer').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#file-viewer').innerHTML = `<div class="box">
+    <div class="fv-header"><span class="fv-path">${esc(p)}</span><div class="fv-meta"><span>${fmtSize(data.size)}</span>${close}</div></div>
+    ${isMd
+      ? `<div class="md-render">${renderMarkdown(data.content)}</div>`
+      : `<div class="fv-code">${esc(data.content)}</div>`
+    }</div>`;
+  $('#file-viewer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 /* ═══ DIFF ═══ */
 async function loadDiff() {
   const data = await api('diff');
   if (!data.diff || !data.diff.trim()) {
-    $('#diff-body').innerHTML = '<div class="empty-state"><span class="es-icon">✓</span><div class="es-text">No uncommitted changes</div><div class="es-sub">Everything is up to date</div></div>';
+    $('#diff-body').innerHTML = '<div class="empty">✓ No uncommitted changes</div>';
     return;
   }
   const lines = data.diff.split('\n').map(l => {
@@ -322,35 +248,23 @@ async function loadDiff() {
     if (l.startsWith('diff ')) return '<span class="d-file">' + e + '</span>';
     return e;
   }).join('\n');
-  $('#diff-body').innerHTML = '<div class="diff-content">' + lines + '</div>';
+  $('#diff-body').innerHTML = '<div class="diff-view">' + lines + '</div>';
 }
 
 /* ═══ ACTIONS ═══ */
-async function refresh() {
-  await loadOverview();
-  toast('Dashboard refreshed', 'info');
-}
+async function refresh() { await loadOverview(); toast('Refreshed', true); }
 
 async function takeSnap() {
   const btn = $('.btn-primary');
-  const orig = btn.innerHTML;
-  btn.innerHTML = '⏳ Snapping...';
-  btn.disabled = true;
+  btn.innerHTML = '⏳ Snapping...'; btn.disabled = true;
   try {
-    const result = await api('snap');
+    const r = await api('snap');
     await loadOverview();
-    if (result.hash) {
-      toast(`✓ Snapshot <strong>${result.hash.substring(0, 8)}</strong> created`, 'success');
-    } else {
-      toast('No changes to snapshot', 'info');
-    }
-  } catch (e) {
-    toast('Snapshot failed: ' + e.message, 'info');
-  }
-  btn.innerHTML = orig;
-  btn.disabled = false;
+    toast(r.hash ? `Snapshot ${r.hash.substring(0, 7)} created` : 'Nothing to commit', true);
+  } catch (e) { toast('Error: ' + e.message); }
+  btn.innerHTML = '✚ Snapshot'; btn.disabled = false;
 }
 
 /* Init */
 loadOverview();
-setInterval(() => loadOverview(), 30000);
+setInterval(loadOverview, 30000);

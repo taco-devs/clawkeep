@@ -101,6 +101,8 @@ function startServer(claw, dir, port, token, opts) {
     'snap': async () => (await claw.snap()) || { message: 'No changes' },
     'files': async (p) => listFiles(dir, p.get('path') || '.'),
     'file': async (p) => readFile(dir, p.get('path')),
+    'commit': async (p) => await claw.showCommit(p.get('hash') || 'HEAD'),
+    'commit/diff': async (p) => ({ diff: await claw.commitDiff(p.get('hash') || 'HEAD') }),
   };
 
   const server = http.createServer(async (req, res) => {
