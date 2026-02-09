@@ -1,7 +1,7 @@
 {
   "name": "clawkeep",
-  "version": "0.1.0",
-  "description": "Git-backed memory persistence for AI agents. Your agent's memory deserves version control.",
+  "version": "0.1.1",
+  "description": "Private, encrypted backups with time-travel restore. Zero-knowledge protection for AI agents, configs, and everything you care about.",
   "main": "src/index.js",
   "bin": {
     "clawkeep": "./bin/clawkeep.js"
