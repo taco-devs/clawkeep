@@ -89,6 +89,12 @@ program
   .description('Manage backup target (local, cloud, s3, git)')
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('-p, --password <pass>', 'Encryption password (or CLAWKEEP_PASSWORD env)')
+  .option('--endpoint <url>', 'S3 endpoint URL')
+  .option('--bucket <name>', 'S3 bucket name')
+  .option('--access-key <key>', 'S3 access key ID')
+  .option('--secret-key <key>', 'S3 secret access key')
+  .option('--region <region>', 'S3 region (default: auto)')
+  .option('--prefix <prefix>', 'S3 key prefix')
   .action((subcommand, targetPath, opts) => {
     opts.args = targetPath ? [targetPath] : [];
     opts.path = targetPath;

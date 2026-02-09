@@ -108,8 +108,31 @@ Your backup target receives **encrypted chunks only**. No metadata. No history. 
 | Target | Status | Description |
 |---|---|---|
 | **Local path** | ✅ Available | Any mounted folder — NAS, USB drive, network share |
-| **S3 / R2** | 🔜 Coming soon | Object storage (AWS, Cloudflare, MinIO) |
+| **S3 / R2** | ✅ Available | Object storage (Cloudflare R2, AWS S3, MinIO, Backblaze B2, Wasabi) |
 | **ClawKeep Cloud** | 🔜 Coming soon | Managed zero-knowledge backup |
+
+### S3 / R2 Setup
+
+```bash
+# Configure S3-compatible target
+clawkeep backup s3 \
+  --endpoint https://your-account.r2.cloudflarestorage.com \
+  --bucket my-backups \
+  --access-key AKIAIOSFODNN7EXAMPLE \
+  --secret-key wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
+  --region auto \
+  --prefix clawkeep/
+
+# Or use environment variables for credentials
+export CLAWKEEP_S3_ACCESS_KEY=your-access-key
+export CLAWKEEP_S3_SECRET_KEY=your-secret-key
+clawkeep backup s3 --endpoint https://... --bucket my-backups
+
+# Sync encrypted chunks to S3
+clawkeep backup sync
+```
+
+Works with any S3-compatible service: **Cloudflare R2** (zero egress fees), **AWS S3**, **Backblaze B2**, **MinIO**, **Wasabi**, and more.
 
 ## Commands
 
@@ -264,7 +287,7 @@ const oldContent = await claw.showFileAtCommit('abc123', 'config.yaml');
 
 ## Roadmap
 
-- [ ] S3 / R2 / MinIO backend
+- [x] S3 / R2 / MinIO backend
 - [ ] `clawkeep.com` — zero-knowledge cloud backup
 - [ ] End-to-end encrypted team sharing
 - [ ] Webhooks on file changes

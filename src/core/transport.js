@@ -60,6 +60,46 @@ class LocalTransport extends BackupTransport {
 }
 
 /**
+ * S3 transport — works with any S3-compatible service.
+ * Cloudflare R2, AWS S3, Backblaze B2, MinIO, Wasabi.
+ */
+class S3Transport extends BackupTransport {
+  constructor(s3Client, prefix) {
+    super();
+    this.s3 = s3Client;
+    this.prefix = prefix || '';
+  }
+
+  async writeFile(remotePath, buffer) {
+    await this.s3.putObject(this.prefix + remotePath, buffer);
+  }
+
+  async readFile(remotePath) {
+    return await this.s3.getObject(this.prefix + remotePath);
+  }
+
+  async deleteFile(remotePath) {
+    await this.s3.deleteObject(this.prefix + remotePath);
+  }
+
+  async listFiles(remoteDir) {
+    const prefix = this.prefix + remoteDir + (remoteDir.endsWith('/') ? '' : '/');
+    const objects = await this.s3.listObjects(prefix);
+    return objects
+      .map(obj => {
+        const key = obj.Key;
+        return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+      })
+      .filter(f => f && !f.includes('/'));
+  }
+
+  async exists(remotePath) {
+    const head = await this.s3.headObject(this.prefix + remotePath);
+    return head !== null;
+  }
+}
+
+/**
  * Git remote transport — uses native git push/pull.
  * No chunks needed; git handles incremental natively.
  */
@@ -94,9 +134,19 @@ function createTransport(backupConfig, clawGit) {
     throw new Error('ClawKeep Cloud is coming soon');
   }
   if (target === 's3') {
-    throw new Error('S3 backup is not yet implemented');
+    const s3Config = backupConfig.s3;
+    if (!s3Config) throw new Error('No S3 config found');
+    const S3Client = require('./s3-client');
+    const s3 = new S3Client({
+      endpoint: s3Config.endpoint,
+      bucket: s3Config.bucket,
+      region: s3Config.region || 'auto',
+      accessKey: s3Config.accessKey || process.env.CLAWKEEP_S3_ACCESS_KEY,
+      secretKey: s3Config.secretKey || process.env.CLAWKEEP_S3_SECRET_KEY,
+    });
+    return new S3Transport(s3, s3Config.prefix || '');
   }
   throw new Error('Unknown target: ' + target);
 }
 
-module.exports = { BackupTransport, LocalTransport, GitTransport, createTransport };
+module.exports = { BackupTransport, LocalTransport, S3Transport, GitTransport, createTransport };

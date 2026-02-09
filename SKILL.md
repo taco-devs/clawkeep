@@ -173,7 +173,33 @@ clawkeep backup restore /mnt/nas/backups/workspace-id/ -d /path/to/workspace
 ```
 
 All backups are AES-256-GCM encrypted. Target path only contains opaque `.enc` chunk files.
-Available targets: `local` (folder/NAS). S3 and Cloud coming soon.
+Available targets: `local` (folder/NAS), `s3` (any S3-compatible storage). Cloud coming soon.
+
+### S3 / R2 Target
+
+```bash
+# Configure S3-compatible target (Cloudflare R2, AWS S3, MinIO, etc.)
+clawkeep backup s3 \
+  --endpoint https://your-account.r2.cloudflarestorage.com \
+  --bucket my-backups \
+  --access-key YOUR_ACCESS_KEY \
+  --secret-key YOUR_SECRET_KEY \
+  --region auto \
+  --prefix clawkeep/ \
+  -d /path/to/workspace
+
+# Or use environment variables for credentials
+export CLAWKEEP_S3_ACCESS_KEY=your-access-key
+export CLAWKEEP_S3_SECRET_KEY=your-secret-key
+
+# Sync to S3
+clawkeep backup sync -d /path/to/workspace
+
+# Test connection
+clawkeep backup test -d /path/to/workspace
+```
+
+Works with: Cloudflare R2, AWS S3, Backblaze B2, MinIO, Wasabi, and any S3-compatible service.
 
 ## Encrypted Export
 
@@ -221,7 +247,8 @@ const oldContent = await claw.showFileAtCommit('abc123', 'MEMORY.md');
 | Restore | `clawkeep restore <hash> -d <dir>` |
 | See changes | `clawkeep diff -d <dir>` |
 | Set backup password | `clawkeep backup set-password -d <dir>` |
-| Set backup target | `clawkeep backup local <path> -d <dir>` |
+| Set local target | `clawkeep backup local <path> -d <dir>` |
+| Set S3 target | `clawkeep backup s3 --endpoint <url> --bucket <name> -d <dir>` |
 | Sync to target | `clawkeep backup sync -d <dir>` |
 | Backup status | `clawkeep backup status -d <dir>` |
 | Restore from backup | `clawkeep backup restore <path> -d <dir>` |

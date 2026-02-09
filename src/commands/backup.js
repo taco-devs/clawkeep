@@ -69,7 +69,7 @@ async function showStatus(bm) {
     }
 
     // Encryption status
-    if (cfg.target === 'local') {
+    if (cfg.target === 'local' || cfg.target === 's3') {
       console.log(`  Encrypted:   ${cfg.passwordSet ? chalk.green('\u2713 yes') : chalk.yellow('\u26a0 password not set')}`);
       if (cfg.chunkCount > 0) {
         console.log(`  Chunks:      ${cfg.chunkCount}`);
@@ -106,6 +106,21 @@ async function setTarget(bm, typeOrArgs, opts) {
       process.exit(1);
     }
     options.url = url;
+  } else if (type === 's3') {
+    const endpoint = opts.endpoint || process.env.CLAWKEEP_S3_ENDPOINT;
+    const bucket = opts.bucket || process.env.CLAWKEEP_S3_BUCKET;
+    const accessKey = opts.accessKey || process.env.CLAWKEEP_S3_ACCESS_KEY;
+    const secretKey = opts.secretKey || process.env.CLAWKEEP_S3_SECRET_KEY;
+    const region = opts.region || process.env.CLAWKEEP_S3_REGION || 'auto';
+    const prefix = opts.prefix || process.env.CLAWKEEP_S3_PREFIX || '';
+
+    if (!endpoint || !bucket || !accessKey || !secretKey) {
+      console.error(chalk.red('  Missing S3 config. Required: --endpoint, --bucket, --access-key, --secret-key'));
+      console.error(chalk.dim('  Or use env vars: CLAWKEEP_S3_ENDPOINT, CLAWKEEP_S3_BUCKET, CLAWKEEP_S3_ACCESS_KEY, CLAWKEEP_S3_SECRET_KEY'));
+      process.exit(1);
+    }
+
+    options = { endpoint, bucket, accessKey, secretKey, region, prefix };
   }
 
   const spinner = ora('Setting up backup target...').start();
@@ -123,8 +138,8 @@ async function setTarget(bm, typeOrArgs, opts) {
       console.log(`  ${chalk.yellow('\u26a0')} ${test.message}`);
     }
 
-    // Remind about password for local targets
-    if (type === 'local' && !bm.hasPassword()) {
+    // Remind about password for encrypted targets
+    if ((type === 'local' || type === 's3') && !bm.hasPassword()) {
       console.log('');
       console.log(chalk.yellow('  \u26a0 Set a password before syncing:'));
       console.log(chalk.dim('  $ clawkeep backup set-password'));
@@ -161,9 +176,10 @@ async function doSetPassword(bm, opts) {
 
 async function doSync(bm, opts) {
   const cfg = bm.getConfig();
-  const password = cfg.target === 'local' ? getPassword(opts) : null;
+  const needsPassword = cfg.target === 'local' || cfg.target === 's3';
+  const password = needsPassword ? getPassword(opts) : null;
 
-  if (cfg.target === 'local' && !password) {
+  if (needsPassword && !password) {
     console.error(chalk.red('  Password required for encrypted sync.'));
     console.error(chalk.dim('  Use: CLAWKEEP_PASSWORD=xxx clawkeep backup sync'));
     process.exit(1);
