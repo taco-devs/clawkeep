@@ -2,7 +2,7 @@
   <img src="assets/banner.jpg" alt="ClawKeep" width="100%" />
 </p>
 
-<h1 align="center">🐾 ClawKeep</h1>
+<h1 align="center">ClawKeep</h1>
 
 <p align="center">
   <strong>Private, encrypted backups that just work.</strong><br>
