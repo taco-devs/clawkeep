@@ -119,6 +119,12 @@ class BackupManager {
         const suffix = crypto.randomBytes(4).toString('hex');
         config.backup.workspaceId = dirname + '-' + suffix;
       }
+    } else if (type === 'cloud') {
+      config.backup.cloud = {
+        workspace: options.workspace,
+        endpoint: options.endpoint || 'https://api.clawkeep.com',
+      };
+      config.backup.workspaceId = options.workspace;
     }
 
     this.claw.saveConfig(config);
@@ -134,8 +140,8 @@ class BackupManager {
     if (!target) throw new Error('No backup target configured');
 
     let result;
-    if (target === 'local' || target === 's3') {
-      // Encrypted incremental sync (local filesystem or S3-compatible storage)
+    if (target === 'local' || target === 's3' || target === 'cloud') {
+      // Encrypted incremental sync (local, S3, or cloud)
       if (!password) throw new Error('Password required for encrypted sync');
       const transport = createTransport(backup, this.claw);
       const sm = new SyncManager(this.claw, transport, password);
@@ -143,10 +149,6 @@ class BackupManager {
     } else if (target === 'git') {
       await this.claw.push();
       result = { ok: true, target: 'git', synced: true };
-    } else if (target === 'cloud') {
-      throw new Error('ClawKeep Cloud is coming soon');
-    } else if (target === 's3') {
-      throw new Error('S3 backup is not yet implemented');
     }
 
     // Reload config (SyncManager may have saved changes)
@@ -204,7 +206,13 @@ class BackupManager {
         return { ok: false, message: 'Remote unreachable: ' + e.message };
       }
     } else if (target === 'cloud') {
-      return { ok: false, message: 'ClawKeep Cloud is coming soon' };
+      try {
+        const transport = createTransport(backup, this.claw);
+        await transport._ensureCredentials();
+        return { ok: true, message: 'Connected to ClawKeep Cloud', latencyMs: Date.now() - start };
+      } catch (e) {
+        return { ok: false, message: 'Cloud unreachable: ' + e.message };
+      }
     } else if (target === 's3') {
       const s3Config = backup.s3;
       if (!s3Config?.endpoint || !s3Config?.bucket) {
@@ -233,8 +241,8 @@ class BackupManager {
   async compact(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
-    if (backup.target !== 'local' && backup.target !== 's3') {
-      throw new Error('Compact only supported for local and s3 targets');
+    if (backup.target !== 'local' && backup.target !== 's3' && backup.target !== 'cloud') {
+      throw new Error('Compact only supported for local, s3, and cloud targets');
     }
     if (!password) throw new Error('Password required for compact');
 
@@ -247,7 +255,7 @@ class BackupManager {
   async getSyncStatus(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
-    if ((backup.target !== 'local' && backup.target !== 's3') || !password) {
+    if ((backup.target !== 'local' && backup.target !== 's3' && backup.target !== 'cloud') || !password) {
       return {
         synced: false,
         chunkCount: backup.chunkCount || 0,
