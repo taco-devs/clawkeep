@@ -101,6 +101,17 @@ program
     require('../src/commands/backup')(subcommand, opts.args, opts);
   });
 
+// cloud
+program
+  .command('cloud [subcommand]')
+  .description('Connect to ClawKeep Cloud')
+  .option('-d, --dir <path>', 'Target directory', '.')
+  .option('--api-key <key>', 'API key (headless)')
+  .option('--workspace <id>', 'Workspace ID (headless)')
+  .option('--endpoint <url>', 'API endpoint')
+  .option('-p, --password <pass>', 'Encryption password')
+  .action((sub, opts) => require('../src/commands/cloud')(sub, opts));
+
 // watch
 program
   .command('watch')

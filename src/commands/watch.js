@@ -143,7 +143,7 @@ function startWatcher(claw, dir, interval, autoPush, quiet) {
         if (config.backup && config.backup.autoSync && config.backup.target) {
           try {
             const bm = new BackupManager(claw);
-            await bm.sync();
+            await bm.sync(process.env.CLAWKEEP_PASSWORD || null);
             if (!quiet) console.log(`  ${chalk.dim(now)} ${chalk.blue('↑')} ${chalk.dim('synced to ' + (config.backup.targetLabel || config.backup.target))}`);
           } catch (syncErr) {
             if (!quiet) console.log(`  ${chalk.dim(now)} ${chalk.yellow('⚠')} ${chalk.dim('sync failed: ' + syncErr.message)}`);

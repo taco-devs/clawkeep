@@ -69,7 +69,7 @@ async function showStatus(bm) {
     }
 
     // Encryption status
-    if (cfg.target === 'local' || cfg.target === 's3') {
+    if (cfg.target === 'local' || cfg.target === 's3' || cfg.target === 'cloud') {
       console.log(`  Encrypted:   ${cfg.passwordSet ? chalk.green('\u2713 yes') : chalk.yellow('\u26a0 password not set')}`);
       if (cfg.chunkCount > 0) {
         console.log(`  Chunks:      ${cfg.chunkCount}`);
@@ -139,7 +139,7 @@ async function setTarget(bm, typeOrArgs, opts) {
     }
 
     // Remind about password for encrypted targets
-    if ((type === 'local' || type === 's3') && !bm.hasPassword()) {
+    if ((type === 'local' || type === 's3' || type === 'cloud') && !bm.hasPassword()) {
       console.log('');
       console.log(chalk.yellow('  \u26a0 Set a password before syncing:'));
       console.log(chalk.dim('  $ clawkeep backup set-password'));
@@ -176,7 +176,7 @@ async function doSetPassword(bm, opts) {
 
 async function doSync(bm, opts) {
   const cfg = bm.getConfig();
-  const needsPassword = cfg.target === 'local' || cfg.target === 's3';
+  const needsPassword = cfg.target === 'local' || cfg.target === 's3' || cfg.target === 'cloud';
   const password = needsPassword ? getPassword(opts) : null;
 
   if (needsPassword && !password) {

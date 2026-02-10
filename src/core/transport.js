@@ -2,6 +2,8 @@
 
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 
 /**
  * Base transport interface for backup targets.
@@ -100,6 +102,104 @@ class S3Transport extends BackupTransport {
 }
 
 /**
+ * Cloud transport — wraps S3Transport with auto-fetched R2 credentials.
+ * Credentials are fetched from the ClawKeep Cloud API and cached until near-expiry.
+ */
+class CloudTransport extends BackupTransport {
+  constructor({ apiKey, workspace, endpoint }) {
+    super();
+    this.apiKey = apiKey;
+    this.workspace = workspace;
+    this.endpoint = (endpoint || 'https://api.clawkeep.com').replace(/\/$/, '');
+    this._inner = null;
+    this._credsExpiry = 0;
+  }
+
+  async _fetchCredentials() {
+    const url = `${this.endpoint}/api/workspaces/${this.workspace}/credentials`;
+    return new Promise((resolve, reject) => {
+      const parsed = new URL(url);
+      const mod = parsed.protocol === 'https:' ? https : http;
+      const req = mod.request(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + this.apiKey,
+          'Accept': 'application/json',
+        },
+      }, (res) => {
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode >= 400) {
+            let msg = `Cloud API error: HTTP ${res.statusCode}`;
+            try { msg = JSON.parse(body).error?.message || msg; } catch {}
+            reject(new Error(msg));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            reject(new Error('Invalid JSON from cloud API'));
+          }
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(30000, () => req.destroy(new Error('Cloud API request timeout')));
+      req.end();
+    });
+  }
+
+  async _ensureCredentials() {
+    // Refresh if no inner transport or within 1 hour of expiry
+    const now = Date.now();
+    if (this._inner && this._credsExpiry - now > 3600000) return;
+
+    const data = await this._fetchCredentials();
+    const creds = data.credentials || data;
+
+    const S3Client = require('./s3-client');
+    const s3 = new S3Client({
+      endpoint: creds.endpoint,
+      bucket: creds.bucket,
+      region: creds.region || 'auto',
+      accessKey: creds.access_key_id,
+      secretKey: creds.secret_access_key,
+    });
+    this._inner = new S3Transport(s3, creds.prefix || `workspaces/${this.workspace}/`);
+    const expiresAt = creds.expires_at || data.expires_at;
+    this._credsExpiry = expiresAt
+      ? new Date(expiresAt).getTime()
+      : now + 3600000;
+  }
+
+  async writeFile(remotePath, buffer) {
+    await this._ensureCredentials();
+    return this._inner.writeFile(remotePath, buffer);
+  }
+
+  async readFile(remotePath) {
+    await this._ensureCredentials();
+    return this._inner.readFile(remotePath);
+  }
+
+  async deleteFile(remotePath) {
+    await this._ensureCredentials();
+    return this._inner.deleteFile(remotePath);
+  }
+
+  async listFiles(remoteDir) {
+    await this._ensureCredentials();
+    return this._inner.listFiles(remoteDir);
+  }
+
+  async exists(remotePath) {
+    await this._ensureCredentials();
+    return this._inner.exists(remotePath);
+  }
+}
+
+/**
  * Git remote transport — uses native git push/pull.
  * No chunks needed; git handles incremental natively.
  */
@@ -131,7 +231,14 @@ function createTransport(backupConfig, clawGit) {
     return new GitTransport(clawGit);
   }
   if (target === 'cloud') {
-    throw new Error('ClawKeep Cloud is coming soon');
+    const { loadCredentials } = require('./credentials');
+    const creds = loadCredentials();
+    const apiKey = process.env.CLAWKEEP_API_KEY || creds?.apiKey;
+    const endpoint = backupConfig.cloud?.endpoint || creds?.endpoint || 'https://api.clawkeep.com';
+    const workspace = backupConfig.workspaceId;
+    if (!apiKey) throw new Error('No API key found. Run `clawkeep cloud setup` or set CLAWKEEP_API_KEY');
+    if (!workspace) throw new Error('No workspace configured. Run `clawkeep cloud setup`');
+    return new CloudTransport({ apiKey, workspace, endpoint });
   }
   if (target === 's3') {
     const s3Config = backupConfig.s3;
@@ -149,4 +256,4 @@ function createTransport(backupConfig, clawGit) {
   throw new Error('Unknown target: ' + target);
 }
 
-module.exports = { BackupTransport, LocalTransport, S3Transport, GitTransport, createTransport };
+module.exports = { BackupTransport, LocalTransport, S3Transport, CloudTransport, GitTransport, createTransport };

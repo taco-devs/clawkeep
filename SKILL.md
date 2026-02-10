@@ -173,7 +173,23 @@ clawkeep backup restore /mnt/nas/backups/workspace-id/ -d /path/to/workspace
 ```
 
 All backups are AES-256-GCM encrypted. Target path only contains opaque `.enc` chunk files.
-Available targets: `local` (folder/NAS), `s3` (any S3-compatible storage). Cloud coming soon.
+Available targets: `local` (folder/NAS), `s3` (any S3-compatible storage), `cloud` (ClawKeep Cloud).
+
+### ClawKeep Cloud Target
+
+```bash
+# One-command setup (opens browser for auth)
+clawkeep cloud setup -d /path/to/workspace
+
+# Headless setup (for SSH, CI, AI agents)
+clawkeep cloud setup --api-key ck_live_xxx --workspace ws_xxx -d /path/to/workspace
+
+# Check cloud connection
+clawkeep cloud status -d /path/to/workspace
+
+# Disconnect
+clawkeep cloud logout
+```
 
 ### S3 / R2 Target
 

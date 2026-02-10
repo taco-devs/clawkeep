@@ -13,250 +13,163 @@ Encrypted backup storage with zero-knowledge encryption. Your keys, your data.
 
 1. ClawKeep CLI installed (`npm install -g clawkeep`)
 2. ClawKeep Cloud account at https://clawkeep.com
-3. API key from dashboard
 
 ## Quick Setup
 
-### 1. Authenticate
+One command connects everything:
 
 ```bash
-# Interactive (opens browser)
-clawkeep auth login
+# Interactive (opens browser for auth)
+clawkeep cloud setup
 
-# Headless (API key)
-clawkeep auth login --api-key ck_live_xxxxx
+# Headless (for SSH sessions or CI)
+clawkeep cloud setup --api-key ck_live_xxxxx --workspace ws_xxxxx
 
-# Or set environment variable
+# Or use environment variable for API key
 export CLAWKEEP_API_KEY=ck_live_xxxxx
+clawkeep cloud setup --workspace ws_xxxxx
 ```
 
-### 2. Create Workspace
+Then set your encryption password and sync:
 
 ```bash
-clawkeep workspace create my-agent
-# Returns: ws_01HQXXXXXX
-```
-
-### 3. Configure Backup Target
-
-```bash
-# Set workspace as default target
-clawkeep backup cloud --workspace ws_01HQXXXXXX
-```
-
-### 4. Initialize Encryption
-
-```bash
-# Set encryption password (REMEMBER THIS - unrecoverable if lost)
-export CLAWKEEP_PASSWORD='your-secure-password'
-
-# Or initialize interactively
-clawkeep init
-```
-
-### 5. Sync
-
-```bash
+clawkeep backup set-password
 clawkeep backup sync
+```
+
+## Full Setup Flow
+
+### 1. Connect to Cloud
+
+```bash
+# Browser flow (recommended for first-time setup)
+clawkeep cloud setup
+# -> Opens browser -> Login/Register -> Click Connect -> Done
+
+# Headless flow (for remote servers, CI, AI agents)
+clawkeep cloud setup --api-key ck_live_xxxxx --workspace ws_xxxxx
+```
+
+### 2. Set Encryption Password
+
+```bash
+# Set password (REMEMBER THIS - unrecoverable if lost)
+CLAWKEEP_PASSWORD='your-secure-password' clawkeep backup set-password
+
+# Or pass directly
+clawkeep backup set-password -p 'your-secure-password'
+```
+
+### 3. Create Files + Sync
+
+```bash
+clawkeep snap                    # Snapshot current state
+clawkeep backup sync             # Sync encrypted backup to cloud
+```
+
+### 4. Auto-Sync with Watch Daemon
+
+```bash
+# Start watching for changes (backs up + syncs on every file change)
+CLAWKEEP_PASSWORD='xxx' clawkeep watch --daemon
 ```
 
 ## Common Operations
 
-### Backup
+### Sync
 
 ```bash
-# Sync all tracked files
-clawkeep backup sync
+# Manual sync
+CLAWKEEP_PASSWORD='xxx' clawkeep backup sync
 
-# Force re-upload all chunks (useful after corruption)
-clawkeep backup sync --force
+# Check sync status
+clawkeep backup status
 
-# Backup specific directory
-clawkeep backup sync ./important-folder
+# Compact backup chunks (reclaim space)
+CLAWKEEP_PASSWORD='xxx' clawkeep backup compact
+```
+
+### Cloud Status
+
+```bash
+# Show connection info
+clawkeep cloud status
+
+# Disconnect from cloud
+clawkeep cloud logout
 ```
 
 ### Restore
 
 ```bash
-# Restore entire workspace to current directory
-clawkeep restore .
+# Restore from a backup snapshot
+clawkeep restore <hash> -d /path/to/workspace
 
-# Restore single file
-clawkeep restore ./MEMORY.md
-
-# Point-in-time restore
-clawkeep restore . --at 2024-01-15T10:00:00Z
-
-# Restore to different location
-clawkeep restore ./MEMORY.md --output /tmp/restored-memory.md
-```
-
-### List Snapshots
-
-```bash
-# All snapshots
-clawkeep snapshots list
-
-# Snapshots for specific file
-clawkeep snapshots list --file ./MEMORY.md
-
-# With timestamps
-clawkeep snapshots list --verbose
-```
-
-### Workspace Management
-
-```bash
-# List workspaces
-clawkeep workspace list
-
-# Get workspace details
-clawkeep workspace info ws_01HQXXXXXX
-
-# Delete workspace (DESTRUCTIVE)
-clawkeep workspace delete ws_01HQXXXXXX
+# View backup history
+clawkeep log -d /path/to/workspace
 ```
 
 ## Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `CLAWKEEP_PASSWORD` | Encryption password | Yes |
-| `CLAWKEEP_API_KEY` | API key for auth | For headless |
-| `CLAWKEEP_WORKSPACE` | Default workspace ID | No |
+| `CLAWKEEP_PASSWORD` | Encryption password | Yes (for sync) |
+| `CLAWKEEP_API_KEY` | API key for auth | For headless setup |
 
-## API Key Management
-
-Generate keys at https://clawkeep.com/dashboard/settings/api-keys
-
-Key prefixes:
-- `ck_live_*` — Production keys
-- `ck_test_*` — Test/sandbox keys
-
-Keys are shown only once at creation. Store securely.
-
-## Automated Backup (Cron/Daemon)
-
-### Using the Watch Daemon
+## Automated Backup (Daemon)
 
 ```bash
 # Start watching for changes (backs up on change)
-CLAWKEEP_PASSWORD='xxx' clawkeep watch --interval 60000
+CLAWKEEP_PASSWORD='xxx' clawkeep watch --daemon --interval 10000
 
-# Run in background
-nohup clawkeep watch --interval 60000 > /var/log/clawkeep.log 2>&1 &
+# Stop the daemon
+clawkeep watch --stop
 ```
 
 ### Using Cron
 
 ```bash
 # Backup every hour
-0 * * * * CLAWKEEP_PASSWORD='xxx' CLAWKEEP_API_KEY='ck_live_xxx' /usr/local/bin/clawkeep backup sync -q
+0 * * * * CLAWKEEP_PASSWORD='xxx' clawkeep backup sync -d /path/to/workspace
 ```
 
-### Using Systemd
+## Agent Integration
 
-```ini
-# /etc/systemd/system/clawkeep.service
-[Unit]
-Description=ClawKeep Backup Watch
-After=network.target
-
-[Service]
-Type=simple
-Environment=CLAWKEEP_PASSWORD=xxx
-Environment=CLAWKEEP_API_KEY=ck_live_xxx
-WorkingDirectory=/path/to/workspace
-ExecStart=/usr/local/bin/clawkeep watch --interval 60000
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Agent Integration Tips
-
-### For Clawdbot/AI Agents
-
-Add to your agent's startup:
+Add to your agent's startup sequence:
 
 ```bash
-# Restore latest state on startup
-CLAWKEEP_PASSWORD='xxx' clawkeep restore .
+# One-time setup (headless)
+clawkeep cloud setup --api-key ck_live_xxx --workspace ws_xxx -p 'password'
 
-# Start backup daemon in background
-CLAWKEEP_PASSWORD='xxx' clawkeep watch --interval 60000 -q &
+# Start auto-backup daemon
+CLAWKEEP_PASSWORD='password' clawkeep watch --daemon -d /path/to/workspace
 ```
-
-### Memory File Backup
-
-If your agent uses memory files (MEMORY.md, daily notes, etc.):
-
-```bash
-# Ensure memory directory is tracked
-clawkeep track ./memory/
-
-# Sync after significant changes
-clawkeep backup sync
-```
-
-### Multi-Machine Sync
-
-To sync agent state across machines:
-
-1. Use the same workspace ID on all machines
-2. Restore before starting work: `clawkeep restore .`
-3. Sync after changes: `clawkeep backup sync`
-4. Handle conflicts manually (last-write-wins by default)
 
 ## Troubleshooting
 
-### "Encryption password required"
+### "No API key found"
 
 ```bash
-# Set the password
+clawkeep cloud setup  # Re-authenticate
+# or
+export CLAWKEEP_API_KEY=ck_live_xxxxx
+```
+
+### "Password required for encrypted sync"
+
+```bash
 export CLAWKEEP_PASSWORD='your-password'
-
-# Or reinitialize
-clawkeep init
-```
-
-### "Workspace not found"
-
-```bash
-# List available workspaces
-clawkeep workspace list
-
-# Check if authenticated
-clawkeep auth status
-```
-
-### "Invalid API key"
-
-1. Check key is correct: `echo $CLAWKEEP_API_KEY`
-2. Regenerate at https://clawkeep.com/dashboard/settings/api-keys
-3. Ensure key hasn't been revoked
-
-### "Chunk upload failed"
-
-```bash
-# Retry with verbose output
-clawkeep backup sync --verbose
-
-# Force re-upload
-clawkeep backup sync --force
+clawkeep backup sync
 ```
 
 ### "Cannot decrypt chunk"
 
 Password mismatch. Ensure `CLAWKEEP_PASSWORD` matches what was used during backup.
 
-⚠️ **If you lose your password, your data is unrecoverable.** This is by design (zero-knowledge).
-
 ## Security Notes
 
 - All encryption happens client-side before upload
 - Server stores only encrypted chunks (ciphertext)
 - Password never leaves your machine
-- API keys can be scoped and rotated
-- Use unique passwords per workspace for isolation
+- API keys can be rotated from the dashboard
+- If you lose your password, your data is unrecoverable (zero-knowledge)
