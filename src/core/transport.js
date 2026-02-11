@@ -166,7 +166,15 @@ class CloudTransport extends BackupTransport {
       accessKey: creds.access_key_id,
       secretKey: creds.secret_access_key,
     });
-    this._inner = new S3Transport(s3, creds.prefix || `workspaces/${this.workspace}/`);
+    // API returns prefix like "workspaces/ws_xxx/" which is the R2 base path.
+    // SyncManager already prepends workspaceId to all paths (e.g. "ws_xxx/manifest.enc"),
+    // so we use the API prefix minus the trailing workspaceId to avoid doubling.
+    let prefix = creds.prefix || '';
+    const wsSuffix = this.workspace + '/';
+    if (prefix.endsWith(wsSuffix)) {
+      prefix = prefix.slice(0, -wsSuffix.length);
+    }
+    this._inner = new S3Transport(s3, prefix);
     const expiresAt = creds.expires_at || data.expires_at;
     this._credsExpiry = expiresAt
       ? new Date(expiresAt).getTime()
