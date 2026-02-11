@@ -110,6 +110,7 @@ program
   .option('--workspace <id>', 'Workspace ID (headless)')
   .option('--endpoint <url>', 'API endpoint')
   .option('-p, --password <pass>', 'Encryption password')
+  .option('--watch', 'Start watcher with --sync after setup')
   .action((sub, opts) => require('../src/commands/cloud')(sub, opts));
 
 // watch
@@ -119,6 +120,7 @@ program
   .option('-d, --dir <path>', 'Target directory', '.')
   .option('--interval <ms>', 'Debounce interval in ms', '5000')
   .option('--push', 'Auto-push after each snap', false)
+  .option('--sync', 'Auto-sync to backup target after each snap', false)
   .option('--daemon', 'Run in background')
   .option('--stop', 'Stop background watcher')
   .option('-q, --quiet', 'Minimal output', false)
