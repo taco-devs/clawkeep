@@ -3,15 +3,45 @@
 const chalk = require('chalk');
 const ora = require('ora');
 const path = require('path');
-const crypto = require('crypto');
+const https = require('https');
 const http = require('http');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const ClawGit = require('../core/git');
 const BackupManager = require('../core/backup');
 const { loadCredentials, saveCredentials, clearCredentials } = require('../core/credentials');
 
-const DEFAULT_ENDPOINT = 'https://clawkeep.com';
-const CALLBACK_TIMEOUT = 120000;
+const DEFAULT_WEB_URL = 'https://clawkeep.com';
+const DEFAULT_API_URL = 'https://api.clawkeep.com';
+const POLL_INTERVAL = 2000;
+const POLL_TIMEOUT = 600000; // 10 minutes (matches KV TTL)
+
+/**
+ * Derive web and API URLs from an --endpoint flag.
+ * - No flag → defaults
+ * - https://clawkeep.com → fix to api.clawkeep.com
+ * - https://api.clawkeep.com → derive clawkeep.com
+ * - Custom → self-hosted, same URL for both
+ */
+function deriveUrls(endpoint) {
+  if (!endpoint) {
+    return { webUrl: DEFAULT_WEB_URL, apiUrl: DEFAULT_API_URL };
+  }
+  const clean = endpoint.replace(/\/$/, '');
+  try {
+    const url = new URL(clean);
+    // Official domain variants
+    if (url.hostname === 'clawkeep.com' || url.hostname === 'www.clawkeep.com') {
+      return { webUrl: DEFAULT_WEB_URL, apiUrl: DEFAULT_API_URL };
+    }
+    if (url.hostname === 'api.clawkeep.com') {
+      return { webUrl: DEFAULT_WEB_URL, apiUrl: DEFAULT_API_URL };
+    }
+    // Self-hosted: use same URL for both
+    return { webUrl: clean, apiUrl: clean };
+  } catch {
+    return { webUrl: clean, apiUrl: clean };
+  }
+}
 
 module.exports = async function cloud(subcommand, opts) {
   if (!subcommand || subcommand === 'setup') {
@@ -29,66 +59,66 @@ module.exports = async function cloud(subcommand, opts) {
 
 async function doSetup(opts) {
   const dir = path.resolve(opts.dir || '.');
-  const endpoint = (opts.endpoint || DEFAULT_ENDPOINT).replace(/\/$/, '');
+  const { webUrl, apiUrl } = deriveUrls(opts.endpoint);
   const apiKey = opts.apiKey || process.env.CLAWKEEP_API_KEY;
   const workspace = opts.workspace;
 
   // Headless mode: --api-key and --workspace provided directly
   if (apiKey && workspace) {
-    return doHeadlessSetup(dir, apiKey, workspace, endpoint, opts);
+    return doHeadlessSetup(dir, apiKey, workspace, apiUrl, opts);
   }
 
-  // SSH detection
-  if (process.env.SSH_CLIENT && !apiKey) {
-    console.log('');
-    console.log(chalk.yellow('  Detected SSH session. Browser flow may not work.'));
-    console.log(chalk.dim('  Use headless mode instead:'));
-    console.log(chalk.dim('  $ clawkeep cloud setup --api-key ck_live_xxx --workspace ws_xxx'));
-    console.log('');
-    process.exit(1);
-  }
-
-  // Browser callback flow
-  return doBrowserSetup(dir, endpoint, opts);
+  // Browser polling flow (works everywhere including SSH)
+  return doBrowserSetup(dir, webUrl, apiUrl, opts);
 }
 
-async function doHeadlessSetup(dir, apiKey, workspace, endpoint, opts) {
+async function doHeadlessSetup(dir, apiKey, workspace, apiUrl, opts) {
   const spinner = ora('Configuring ClawKeep Cloud...').start();
   try {
-    // Save global credentials
-    saveCredentials({ apiKey, endpoint });
-
-    // Configure project if initialized
+    // Auto-init if directory not initialized
     const claw = new ClawGit(dir);
-    if (await claw.isInitialized()) {
-      const bm = new BackupManager(claw);
-      await bm.setTarget('cloud', { workspace, endpoint });
+    if (!(await claw.isInitialized())) {
+      await claw.init();
+      await claw.snap('initial backup');
+      spinner.text = 'Initialized and configuring cloud...';
+    }
 
-      // Set password if provided
-      const password = opts.password || process.env.CLAWKEEP_PASSWORD;
-      if (password && !bm.hasPassword()) {
-        bm.setPassword(password);
-      }
+    // Save global credentials
+    saveCredentials({ apiKey, endpoint: apiUrl });
 
-      // Test connection
-      const test = await bm.test();
-      if (test.ok) {
-        spinner.succeed('Connected to ClawKeep Cloud');
-        console.log(`  ${chalk.green('\u2713')} ${test.message}${test.latencyMs ? ` (${test.latencyMs}ms)` : ''}`);
-      } else {
-        spinner.warn('Credentials saved but connection test failed');
-        console.log(`  ${chalk.yellow('\u26a0')} ${test.message}`);
-      }
+    // Configure project
+    const bm = new BackupManager(claw);
+    await bm.setTarget('cloud', { workspace, endpoint: apiUrl });
+
+    // Set password if provided
+    const password = opts.password || process.env.CLAWKEEP_PASSWORD;
+    if (password && !bm.hasPassword()) {
+      bm.setPassword(password);
+    }
+
+    // Test connection
+    const test = await bm.test();
+    if (test.ok) {
+      spinner.succeed('Connected to ClawKeep Cloud');
+      console.log(`  ${chalk.green('\u2713')} ${test.message}${test.latencyMs ? ` (${test.latencyMs}ms)` : ''}`);
     } else {
-      spinner.succeed('Credentials saved');
-      console.log(chalk.dim('  Run `clawkeep init` in a project directory, then `clawkeep cloud setup` again.'));
+      spinner.warn('Credentials saved but connection test failed');
+      console.log(`  ${chalk.yellow('\u26a0')} ${test.message}`);
     }
 
     console.log('');
     console.log(`  ${chalk.dim('API Key')}    ${maskKey(apiKey)}`);
     console.log(`  ${chalk.dim('Workspace')}  ${workspace}`);
-    console.log(`  ${chalk.dim('Endpoint')}   ${endpoint}`);
+    console.log(`  ${chalk.dim('Endpoint')}   ${apiUrl}`);
     console.log('');
+
+    // Show what's next
+    showNextSteps(bm, opts);
+
+    // Auto-start watcher if --watch
+    if (opts.watch) {
+      startSyncWatcher(dir);
+    }
   } catch (err) {
     spinner.fail('Setup failed');
     console.error(chalk.red('  ' + err.message));
@@ -96,131 +126,241 @@ async function doHeadlessSetup(dir, apiKey, workspace, endpoint, opts) {
   }
 }
 
-async function doBrowserSetup(dir, endpoint, opts) {
-  const state = crypto.randomBytes(24).toString('hex');
-
+async function doBrowserSetup(dir, webUrl, apiUrl, opts) {
   console.log('');
   console.log(chalk.bold.cyan('  \ud83d\udc3e ClawKeep Cloud Setup'));
   console.log('');
 
-  // Start temporary callback server
-  const { port, promise } = await startCallbackServer(state);
+  if (process.env.SSH_CLIENT) {
+    console.log(chalk.dim('  SSH session detected — polling mode (no localhost needed).'));
+    console.log('');
+  }
 
-  // Build connect URL
+  // Step 1: Create session on API
+  const sessionSpinner = ora('Creating connect session...').start();
+  let code;
+  try {
+    const dirName = path.basename(path.resolve(dir));
+    const response = await httpPost(`${apiUrl}/api/connect/session`, { dir_name: dirName });
+    code = response.code;
+    sessionSpinner.succeed(`Session code: ${chalk.bold(code)}`);
+  } catch (err) {
+    sessionSpinner.fail('Failed to create session');
+    console.error(chalk.red('  ' + err.message));
+    process.exit(1);
+  }
+
+  // Step 2: Open browser
   const dirName = path.basename(path.resolve(dir));
-  const connectUrl = `${endpoint}/connect?callback_port=${port}&state=${state}&dir_name=${encodeURIComponent(dirName)}`;
+  const connectUrl = `${webUrl}/connect?code=${code}&dir_name=${encodeURIComponent(dirName)}`;
 
+  console.log('');
   console.log(chalk.dim('  Opening browser...'));
   console.log('');
   console.log(`  ${chalk.dim('If it doesn\'t open, visit:')} `);
   console.log(`  ${chalk.cyan(connectUrl)}`);
   console.log('');
 
-  // Open browser
   openBrowser(connectUrl);
 
-  const spinner = ora('Waiting for browser authorization...').start();
+  // Step 3: Poll for completion
+  const pollSpinner = ora('Waiting for browser authorization...').start();
 
   try {
-    const result = await promise;
-    spinner.succeed('Authorization received');
+    const result = await pollForCompletion(apiUrl, code, POLL_TIMEOUT);
+    pollSpinner.succeed('Authorization received');
 
     // Save credentials
-    saveCredentials({ apiKey: result.apiKey, endpoint });
+    saveCredentials({ apiKey: result.api_key, endpoint: apiUrl });
+
+    // Auto-init if needed
+    const claw = new ClawGit(dir);
+    if (!(await claw.isInitialized())) {
+      await claw.init();
+      await claw.snap('initial backup');
+    }
 
     // Configure project
-    const claw = new ClawGit(dir);
-    if (await claw.isInitialized()) {
-      const bm = new BackupManager(claw);
-      await bm.setTarget('cloud', { workspace: result.workspace, endpoint });
+    const bm = new BackupManager(claw);
+    await bm.setTarget('cloud', { workspace: result.workspace_id, endpoint: apiUrl });
 
-      const password = opts.password || process.env.CLAWKEEP_PASSWORD;
-      if (password && !bm.hasPassword()) {
-        bm.setPassword(password);
-      }
+    const password = opts.password || process.env.CLAWKEEP_PASSWORD;
+    if (password && !bm.hasPassword()) {
+      bm.setPassword(password);
+    }
 
-      const test = await bm.test();
-      if (test.ok) {
-        console.log(`  ${chalk.green('\u2713')} ${test.message}${test.latencyMs ? ` (${test.latencyMs}ms)` : ''}`);
-      }
-
-      if (!bm.hasPassword()) {
-        console.log('');
-        console.log(chalk.yellow('  \u26a0 Set a password before syncing:'));
-        console.log(chalk.dim('  $ clawkeep backup set-password'));
-      }
+    const test = await bm.test();
+    if (test.ok) {
+      console.log(`  ${chalk.green('\u2713')} ${test.message}${test.latencyMs ? ` (${test.latencyMs}ms)` : ''}`);
     }
 
     console.log('');
-    console.log(`  ${chalk.dim('Workspace')}  ${result.workspace}`);
+    console.log(`  ${chalk.dim('Workspace')}  ${result.workspace_id}`);
     console.log('');
+
+    // Show what's next
+    showNextSteps(bm, opts);
+
+    // Auto-start watcher if --watch
+    if (opts.watch) {
+      startSyncWatcher(dir);
+    }
   } catch (err) {
-    spinner.fail(err.message || 'Setup failed');
+    pollSpinner.fail(err.message || 'Setup failed');
     process.exit(1);
   }
 }
 
-function startCallbackServer(expectedState) {
-  return new Promise((resolveSetup) => {
-    let settled = false;
+function showNextSteps(bm, opts) {
+  const hasPassword = bm.hasPassword();
+  const willWatch = opts.watch;
 
-    const server = http.createServer((req, res) => {
-      const url = new URL(req.url, 'http://localhost');
-      if (url.pathname !== '/callback') {
-        res.writeHead(404);
-        res.end('Not found');
-        return;
-      }
+  if (hasPassword && willWatch) {
+    // Everything is set up, nothing more to do
+    return;
+  }
 
-      const apiKey = url.searchParams.get('api_key');
-      const workspace = url.searchParams.get('workspace');
-      const state = url.searchParams.get('state');
+  console.log(chalk.bold('  What\'s next:'));
+  console.log('');
 
-      if (state !== expectedState) {
-        res.writeHead(400, { 'Content-Type': 'text/html' });
-        res.end('<html><body><h2>Error: Invalid state parameter</h2><p>Please try again from the CLI.</p></body></html>');
-        return;
-      }
+  if (!hasPassword) {
+    console.log(`  ${chalk.yellow('1.')} Set an encryption password:`);
+    console.log(chalk.dim('     $ clawkeep backup set-password'));
+    console.log('');
+  }
 
-      if (!apiKey || !workspace) {
-        res.writeHead(400, { 'Content-Type': 'text/html' });
-        res.end('<html><body><h2>Error: Missing parameters</h2><p>Please try again from the CLI.</p></body></html>');
-        return;
-      }
+  if (!willWatch) {
+    const step = hasPassword ? '1.' : '2.';
+    console.log(`  ${chalk.yellow(step)} Start auto-sync watcher:`);
+    console.log(chalk.dim('     $ clawkeep watch --sync --daemon'));
+    console.log('');
+  }
 
-      // Success
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`<html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#0a0a0a;color:#fafafa">
-        <div style="text-align:center">
-          <h1 style="font-size:3rem;margin-bottom:0.5rem">\u2713</h1>
-          <h2>Connected!</h2>
-          <p style="color:#888">You can close this tab and return to the terminal.</p>
-        </div>
-      </body></html>`);
+  if (!hasPassword) {
+    console.log(chalk.dim('  Or do it all in one line:'));
+    console.log(chalk.dim('  $ clawkeep backup set-password && clawkeep watch --sync --daemon'));
+    console.log('');
+  }
+}
 
-      settled = true;
-      server.close();
-      resolveResult({ apiKey, workspace });
-    });
+function startSyncWatcher(dir) {
+  console.log(chalk.dim('  Starting background watcher with --sync...'));
 
-    let resolveResult;
-    const resultPromise = new Promise((resolve, reject) => {
-      resolveResult = resolve;
+  const binPath = path.join(__dirname, '../../bin/clawkeep.js');
+  const args = ['watch', '--sync', '--daemon', '-d', dir];
 
-      // Timeout
-      setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          server.close();
-          reject(new Error('Timed out waiting for browser authorization (120s)'));
+  const child = spawn(process.execPath, [binPath, ...args], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+
+  console.log(`  ${chalk.green('\u2713')} Watcher started (PID ${child.pid})`);
+  console.log(chalk.dim('  Stop with: clawkeep watch --stop'));
+  console.log('');
+}
+
+// ── HTTP helpers (zero deps) ─────────────────────────────────────────
+
+function httpPost(url, body) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const data = JSON.stringify(body);
+
+    const req = mod.request({
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data),
+      },
+    }, (res) => {
+      let buf = '';
+      res.on('data', (chunk) => buf += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(buf);
+          if (res.statusCode >= 400) {
+            reject(new Error(json.error?.message || `HTTP ${res.statusCode}`));
+          } else {
+            resolve(json);
+          }
+        } catch {
+          reject(new Error(`Invalid response from server (HTTP ${res.statusCode})`));
         }
-      }, CALLBACK_TIMEOUT);
+      });
     });
 
-    server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port;
-      resolveSetup({ port, promise: resultPromise });
+    req.on('error', (err) => reject(new Error(`Connection failed: ${err.message}`)));
+    req.write(data);
+    req.end();
+  });
+}
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+
+    const req = mod.request({
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+    }, (res) => {
+      let buf = '';
+      res.on('data', (chunk) => buf += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(buf);
+          if (res.statusCode >= 400) {
+            reject(new Error(json.error?.message || `HTTP ${res.statusCode}`));
+          } else {
+            resolve(json);
+          }
+        } catch {
+          reject(new Error(`Invalid response from server (HTTP ${res.statusCode})`));
+        }
+      });
     });
+
+    req.on('error', (err) => reject(new Error(`Connection failed: ${err.message}`)));
+    req.end();
+  });
+}
+
+function pollForCompletion(apiUrl, code, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+
+    const poll = async () => {
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error('Timed out waiting for browser authorization (10m)'));
+        return;
+      }
+
+      try {
+        const result = await httpGet(`${apiUrl}/api/connect/poll/${code}`);
+        if (result.status === 'completed') {
+          resolve(result);
+          return;
+        }
+      } catch (err) {
+        // Session expired or other error
+        if (err.message.includes('not found') || err.message.includes('expired')) {
+          reject(new Error('Session expired. Please try again.'));
+          return;
+        }
+        // Network errors are transient, keep polling
+      }
+
+      setTimeout(poll, POLL_INTERVAL);
+    };
+
+    poll();
   });
 }
 

@@ -14,6 +14,7 @@ module.exports = async function watch(opts) {
   const dir = path.resolve(opts.dir || '.');
   const interval = parseInt(opts.interval) || 5000;
   const autoPush = opts.push || false;
+  const autoSync = opts.sync || false;
   const quiet = opts.quiet || false;
 
   if (opts.stop) return stopDaemon(dir);
@@ -26,7 +27,7 @@ module.exports = async function watch(opts) {
   }
 
   if (opts.daemon) return startDaemon(dir, interval, opts);
-  startWatcher(claw, dir, interval, autoPush, quiet);
+  startWatcher(claw, dir, interval, autoPush, autoSync, quiet);
 };
 
 function startDaemon(dir, interval, opts) {
@@ -39,6 +40,7 @@ function startDaemon(dir, interval, opts) {
 
   const args = ['watch', '--interval', String(interval), '-d', dir];
   if (opts.push) args.push('--push');
+  if (opts.sync) args.push('--sync');
   args.push('-q');
 
   const binPath = path.join(__dirname, '../../bin/clawkeep.js');
@@ -67,7 +69,7 @@ function stopDaemon(dir) {
   try { fs.unlinkSync(pidPath); } catch {}
 }
 
-function startWatcher(claw, dir, interval, autoPush, quiet) {
+function startWatcher(claw, dir, interval, autoPush, autoSync, quiet) {
   const config = claw.loadConfig();
   const pidPath = path.join(dir, PID_FILE);
 
@@ -81,6 +83,7 @@ function startWatcher(claw, dir, interval, autoPush, quiet) {
     console.log(`  ${chalk.dim('Directory')}   ${dir}`);
     console.log(`  ${chalk.dim('Debounce')}    ${interval}ms`);
     console.log(`  ${chalk.dim('Auto-push')}   ${autoPush ? chalk.green('on') : chalk.dim('off')}`);
+    console.log(`  ${chalk.dim('Auto-sync')}   ${(autoSync || config.backup?.autoSync) ? chalk.green('on') : chalk.dim('off')}`);
     console.log('');
     console.log(chalk.dim('  Waiting for changes... (Ctrl+C to stop · --daemon to run in background)'));
     console.log('');
@@ -140,7 +143,7 @@ function startWatcher(claw, dir, interval, autoPush, quiet) {
         }
 
         // Auto-sync to backup target
-        if (config.backup && config.backup.autoSync && config.backup.target) {
+        if (config.backup && (config.backup.autoSync || autoSync) && config.backup.target) {
           try {
             const bm = new BackupManager(claw);
             await bm.sync(process.env.CLAWKEEP_PASSWORD || null);
