@@ -1,6 +1,6 @@
 {
   "name": "clawkeep",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Private, encrypted backups with time-travel restore. Zero-knowledge protection for AI agents, configs, and everything you care about.",
   "main": "src/index.js",
   "bin": {
