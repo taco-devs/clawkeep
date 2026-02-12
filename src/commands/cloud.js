@@ -184,6 +184,15 @@ async function doBrowserSetup(dir, webUrl, apiUrl, opts) {
     const bm = new BackupManager(claw);
     await bm.setTarget('cloud', { workspace: result.workspace_id, endpoint: apiUrl });
 
+    // Store wrappedKey + passwordHash if browser derived them
+    if (result.wrapped_key && result.password_hash) {
+      const config = claw.loadConfig();
+      if (!config.backup) config.backup = {};
+      config.backup.passwordHash = result.password_hash;
+      config.backup.wrappedKey = result.wrapped_key;
+      claw.saveConfig(config);
+    }
+
     const password = opts.password || process.env.CLAWKEEP_PASSWORD;
     if (password && !bm.hasPassword()) {
       bm.setPassword(password);
@@ -198,7 +207,7 @@ async function doBrowserSetup(dir, webUrl, apiUrl, opts) {
     console.log(`  ${chalk.dim('Workspace')}  ${result.workspace_id}`);
     console.log('');
 
-    // Show what's next
+    // Show what's next (skip password step if wrappedKey was received from browser)
     showNextSteps(bm, opts);
 
     // Auto-start watcher if --watch
