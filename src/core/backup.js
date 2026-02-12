@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { hashPassword, verifyPassword } = require('./sync-crypto');
+const { hashPassword, verifyPassword, deriveEncryptionKey, wrapKey, unwrapKey } = require('./sync-crypto');
 const { createTransport, LocalTransport } = require('./transport');
 const SyncManager = require('./sync');
 
@@ -43,18 +43,21 @@ class BackupManager {
       cloud: backup.cloud || null,
       s3: backup.s3 || null,
       passwordSet: !!backup.passwordHash,
+      wrappedKeySet: !!backup.wrappedKey,
       workspaceId: backup.workspaceId || null,
       chunkCount: backup.chunkCount || 0,
       lastSyncCommit: backup.lastSyncCommit || null,
     };
   }
 
-  /** Set encryption password (stores hash only) */
+  /** Set encryption password (stores hash + wrappedKey) */
   setPassword(password) {
     if (!password) throw new Error('Password is required');
     const config = this.claw.loadConfig();
     if (!config.backup) config.backup = {};
     config.backup.passwordHash = hashPassword(password);
+    const encKey = deriveEncryptionKey(password);
+    config.backup.wrappedKey = wrapKey(encKey, config.backup.passwordHash);
     this.claw.saveConfig(config);
   }
 
@@ -70,6 +73,28 @@ class BackupManager {
     const hash = config.backup?.passwordHash;
     if (!hash) return false;
     return verifyPassword(password, hash);
+  }
+
+  /**
+   * Resolve encryption credential from config or explicit password.
+   * Returns { encryptionKey } (keyless/CK02) or { password } (legacy/CK01).
+   */
+  _resolveCredential(password) {
+    const config = this.claw.loadConfig();
+    const backup = config.backup || {};
+
+    // Priority 1: wrappedKey exists → unwrap it (keyless mode)
+    if (backup.wrappedKey && backup.passwordHash) {
+      const key = unwrapKey(backup.wrappedKey, backup.passwordHash);
+      return { encryptionKey: key };
+    }
+
+    // Priority 2: explicit password → use directly (legacy / restore)
+    if (password) {
+      return { password };
+    }
+
+    throw new Error('No encryption credential available. Run: clawkeep backup set-password');
   }
 
   /** Set backup target */
@@ -131,7 +156,7 @@ class BackupManager {
     return this.getConfig();
   }
 
-  /** Sync to backup target */
+  /** Sync to backup target (password optional if wrappedKey exists) */
   async sync(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
@@ -143,9 +168,9 @@ class BackupManager {
     let transport;
     if (target === 'local' || target === 's3' || target === 'cloud') {
       // Encrypted incremental sync (local, S3, or cloud)
-      if (!password) throw new Error('Password required for encrypted sync');
+      const credential = this._resolveCredential(password);
       transport = createTransport(backup, this.claw);
-      const sm = new SyncManager(this.claw, transport, password);
+      const sm = new SyncManager(this.claw, transport, credential);
       result = await sm.sync();
     } else if (target === 'git') {
       await this.claw.push();
@@ -244,25 +269,25 @@ class BackupManager {
     return { ok: false, message: 'Unknown target: ' + target };
   }
 
-  /** Compact chunks into single full bundle */
+  /** Compact chunks into single full bundle (password optional if wrappedKey exists) */
   async compact(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
     if (backup.target !== 'local' && backup.target !== 's3' && backup.target !== 'cloud') {
       throw new Error('Compact only supported for local, s3, and cloud targets');
     }
-    if (!password) throw new Error('Password required for compact');
 
+    const credential = this._resolveCredential(password);
     const transport = createTransport(backup, this.claw);
-    const sm = new SyncManager(this.claw, transport, password);
+    const sm = new SyncManager(this.claw, transport, credential);
     return await sm.compact();
   }
 
-  /** Get sync status (chunk count, sizes, etc.) */
+  /** Get sync status (chunk count, sizes, etc.) — password optional if wrappedKey exists */
   async getSyncStatus(password) {
     const config = this.claw.loadConfig();
     const backup = config.backup || {};
-    if ((backup.target !== 'local' && backup.target !== 's3' && backup.target !== 'cloud') || !password) {
+    if (backup.target !== 'local' && backup.target !== 's3' && backup.target !== 'cloud') {
       return {
         synced: false,
         chunkCount: backup.chunkCount || 0,
@@ -271,8 +296,9 @@ class BackupManager {
     }
 
     try {
+      const credential = this._resolveCredential(password);
       const transport = createTransport(backup, this.claw);
-      const sm = new SyncManager(this.claw, transport, password);
+      const sm = new SyncManager(this.claw, transport, credential);
       return await sm.getStatus();
     } catch {
       return {
@@ -299,7 +325,7 @@ class BackupManager {
     const parentDir = path.dirname(sourcePath);
     const transport = new LocalTransport(parentDir);
 
-    return await SyncManager.restoreFrom(transport, workspaceId, password, destDir);
+    return await SyncManager.restoreFrom(transport, workspaceId, { password }, destDir);
   }
 }
 

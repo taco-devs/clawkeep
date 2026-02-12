@@ -4,19 +4,28 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { encryptChunk, decryptChunk } = require('./sync-crypto');
+const { encryptChunk, encryptChunkWithKey, decryptChunk } = require('./sync-crypto');
 
 /**
  * SyncManager — manages encrypted incremental chunk-based sync.
  *
  * Handles manifest management, git bundle creation, incremental logic,
  * restore from backup, and compaction.
+ *
+ * Accepts a credential object: { password } for CK01 or { encryptionKey } for CK02.
  */
 class SyncManager {
-  constructor(clawGit, transport, password) {
+  constructor(clawGit, transport, credential) {
     this.claw = clawGit;
     this.transport = transport;
-    this.password = password;
+    // credential: { password } OR { encryptionKey: Buffer }
+    if (credential.encryptionKey) {
+      this.encryptionKey = credential.encryptionKey;
+      this.password = null;
+    } else {
+      this.password = credential.password;
+      this.encryptionKey = null;
+    }
   }
 
   /**
@@ -45,6 +54,23 @@ class SyncManager {
   }
 
   /**
+   * Encrypt a buffer using the appropriate method (CK02 if key, CK01 if password).
+   */
+  _encrypt(buffer) {
+    if (this.encryptionKey) {
+      return encryptChunkWithKey(buffer, this.encryptionKey);
+    }
+    return encryptChunk(buffer, this.password);
+  }
+
+  /**
+   * Decrypt a buffer. Handles CK01 and CK02 auto-detection.
+   */
+  _decrypt(encBuffer) {
+    return decryptChunk(encBuffer, this.password, this.encryptionKey);
+  }
+
+  /**
    * Read and decrypt manifest from remote. Returns null if not found.
    */
   async _readManifest(workspaceId) {
@@ -53,7 +79,7 @@ class SyncManager {
     if (!exists) return null;
 
     const encData = await this.transport.readFile(manifestPath);
-    const data = decryptChunk(encData, this.password);
+    const data = this._decrypt(encData);
     return JSON.parse(data.toString('utf8'));
   }
 
@@ -62,7 +88,7 @@ class SyncManager {
    */
   async _writeManifest(workspaceId, manifest) {
     const data = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8');
-    const encrypted = encryptChunk(data, this.password);
+    const encrypted = this._encrypt(data);
     await this.transport.writeFile(workspaceId + '/manifest.enc', encrypted);
   }
 
@@ -173,7 +199,7 @@ class SyncManager {
     // Encrypt and write chunk
     const chunkNum = manifest.chunks.length + 1;
     const chunkId = this._chunkName(chunkNum);
-    const encrypted = encryptChunk(bundleBuffer, this.password);
+    const encrypted = this._encrypt(bundleBuffer);
     await this.transport.writeFile(workspaceId + '/' + chunkId, encrypted);
 
     // Count commits in this chunk
@@ -227,7 +253,7 @@ class SyncManager {
       const bundlePaths = [];
       for (const chunk of manifest.chunks) {
         const encData = await this.transport.readFile(workspaceId + '/' + chunk.id);
-        const bundle = decryptChunk(encData, this.password);
+        const bundle = this._decrypt(encData);
         const bundlePath = path.join(tmpDir, chunk.id.replace('.enc', '.bundle'));
         fs.writeFileSync(bundlePath, bundle);
         bundlePaths.push(bundlePath);
@@ -262,11 +288,15 @@ class SyncManager {
   /**
    * Static restore: restore from a backup path without needing an initialized repo.
    * Used when restoring to a brand new directory.
+   * @param {object} credential - { password } or { encryptionKey }
    */
-  static async restoreFrom(transport, workspaceId, password, destDir) {
+  static async restoreFrom(transport, workspaceId, credential, destDir) {
+    const password = credential.password || null;
+    const key = credential.encryptionKey || null;
+
     const manifestPath = workspaceId + '/manifest.enc';
     const encManifest = await transport.readFile(manifestPath);
-    const manifest = JSON.parse(decryptChunk(encManifest, password).toString('utf8'));
+    const manifest = JSON.parse(decryptChunk(encManifest, password, key).toString('utf8'));
 
     if (!manifest.chunks.length) throw new Error('Backup has no chunks');
 
@@ -278,7 +308,7 @@ class SyncManager {
       const bundlePaths = [];
       for (const chunk of manifest.chunks) {
         const encData = await transport.readFile(workspaceId + '/' + chunk.id);
-        const bundle = decryptChunk(encData, password);
+        const bundle = decryptChunk(encData, password, key);
         const bundlePath = path.join(tmpDir, chunk.id.replace('.enc', '.bundle'));
         fs.writeFileSync(bundlePath, bundle);
         bundlePaths.push(bundlePath);
@@ -324,7 +354,7 @@ class SyncManager {
       const bundlePaths = [];
       for (const chunk of manifest.chunks) {
         const encData = await this.transport.readFile(workspaceId + '/' + chunk.id);
-        const bundle = decryptChunk(encData, this.password);
+        const bundle = this._decrypt(encData);
         const bundlePath = path.join(tmpDir, chunk.id.replace('.enc', '.bundle'));
         fs.writeFileSync(bundlePath, bundle);
         bundlePaths.push(bundlePath);
@@ -351,7 +381,7 @@ class SyncManager {
       }
 
       // Encrypt and write new full chunk
-      const encrypted = encryptChunk(fullBundleBuffer, this.password);
+      const encrypted = this._encrypt(fullBundleBuffer);
       const newChunkId = this._chunkName(1);
       await this.transport.writeFile(workspaceId + '/' + newChunkId, encrypted);
 

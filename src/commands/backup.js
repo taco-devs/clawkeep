@@ -166,7 +166,8 @@ async function doSetPassword(bm, opts) {
   try {
     bm.setPassword(password);
     spinner.succeed('Encryption password set');
-    console.log(chalk.dim('  Password hash stored (password itself is never saved)'));
+    console.log(chalk.dim('  Password hash + wrapped key stored (password itself is never saved)'));
+    console.log(chalk.dim('  Keyless sync enabled — no CLAWKEEP_PASSWORD needed for daemon'));
   } catch (err) {
     spinner.fail('Failed to set password');
     console.error(chalk.red('  ' + err.message));
@@ -179,9 +180,10 @@ async function doSync(bm, opts) {
   const needsPassword = cfg.target === 'local' || cfg.target === 's3' || cfg.target === 'cloud';
   const password = needsPassword ? getPassword(opts) : null;
 
-  if (needsPassword && !password) {
+  if (needsPassword && !password && !cfg.wrappedKeySet) {
     console.error(chalk.red('  Password required for encrypted sync.'));
     console.error(chalk.dim('  Use: CLAWKEEP_PASSWORD=xxx clawkeep backup sync'));
+    console.error(chalk.dim('  Or run `clawkeep backup set-password` first for keyless sync.'));
     process.exit(1);
   }
 
@@ -234,10 +236,12 @@ async function doTest(bm) {
 }
 
 async function doCompact(bm, opts) {
+  const cfg = bm.getConfig();
   const password = getPassword(opts);
-  if (!password) {
+  if (!password && !cfg.wrappedKeySet) {
     console.error(chalk.red('  Password required for compact.'));
     console.error(chalk.dim('  Use: CLAWKEEP_PASSWORD=xxx clawkeep backup compact'));
+    console.error(chalk.dim('  Or run `clawkeep backup set-password` first for keyless compact.'));
     process.exit(1);
   }
 
