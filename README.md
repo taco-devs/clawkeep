@@ -109,7 +109,35 @@ Your backup target receives **encrypted chunks only**. No metadata. No history. 
 |---|---|---|
 | **Local path** | ✅ Available | Any mounted folder — NAS, USB drive, network share |
 | **S3 / R2** | ✅ Available | Object storage (Cloudflare R2, AWS S3, MinIO, Backblaze B2, Wasabi) |
-| **ClawKeep Cloud** | 🔜 Coming soon | Managed zero-knowledge backup |
+| **ClawKeep Cloud** | ✅ Available | Managed zero-knowledge backup with browser-based setup |
+
+### ClawKeep Cloud Setup
+
+The easiest way to get started. Your encryption password is set in the browser — **the CLI never sees it**.
+
+```bash
+# Connect to ClawKeep Cloud
+clawkeep cloud setup
+
+# Opens browser → log in → set your encryption password
+# CLI receives only the encrypted key material, never the password
+```
+
+```
+✔ Authorization received
+✓ Connected to ClawKeep Cloud
+  Workspace ws_01abc123...
+
+What's next:
+  $ clawkeep watch --sync --daemon
+```
+
+**Security:** The encryption key is derived in your browser. Your plaintext password never leaves the browser, never hits our API, and the CLI never sees it. We store only encrypted chunks — true zero-knowledge.
+
+```bash
+# Start auto-syncing (no password in environment needed!)
+clawkeep watch --sync --daemon
+```
 
 ### S3 / R2 Setup
 
@@ -188,10 +216,24 @@ clawkeep watch --daemon
 clawkeep watch --stop
 
 # Auto-sync to backup target after each change
-clawkeep watch --daemon --push
+clawkeep watch --sync --daemon
 ```
 
 Smart debouncing, stability detection, configurable ignore patterns. Your files are continuously protected.
+
+### 🔑 Keyless Daemon
+
+When using ClawKeep Cloud, the watch daemon **doesn't need your password in the environment**. The encrypted key material is stored locally during `cloud setup` — the daemon uses it automatically.
+
+```bash
+# No CLAWKEEP_PASSWORD needed!
+clawkeep watch --sync --daemon
+
+# Works with PM2, systemd, or any process manager
+pm2 start "clawkeep watch --sync" --name clawkeep-watch
+```
+
+For local/S3 targets, run `clawkeep backup set-password` once to store the encrypted key material, then the daemon works the same way.
 
 ## Time-Travel Restore
 
