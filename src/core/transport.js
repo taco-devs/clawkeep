@@ -181,6 +181,36 @@ class CloudTransport extends BackupTransport {
       : now + 3600000;
   }
 
+  /**
+   * Report sync stats to the cloud API (fire-and-forget).
+   */
+  async reportSync({ chunkCount, totalSize }) {
+    const url = `${this.endpoint}/api/workspaces/${this.workspace}/sync-report`;
+    const body = JSON.stringify({ chunk_count: chunkCount, storage_bytes: totalSize });
+    try {
+      await new Promise((resolve, reject) => {
+        const parsed = new URL(url);
+        const mod = parsed.protocol === 'https:' ? https : http;
+        const req = mod.request(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + this.apiKey,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        }, (res) => {
+          res.resume(); // drain response
+          res.on('end', resolve);
+        });
+        req.on('error', reject);
+        req.setTimeout(15000, () => req.destroy(new Error('Sync report timeout')));
+        req.end(body);
+      });
+    } catch {
+      // Fire-and-forget: don't fail the sync if report fails
+    }
+  }
+
   async writeFile(remotePath, buffer) {
     await this._ensureCredentials();
     return this._inner.writeFile(remotePath, buffer);

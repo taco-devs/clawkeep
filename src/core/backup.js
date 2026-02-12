@@ -140,10 +140,11 @@ class BackupManager {
     if (!target) throw new Error('No backup target configured');
 
     let result;
+    let transport;
     if (target === 'local' || target === 's3' || target === 'cloud') {
       // Encrypted incremental sync (local, S3, or cloud)
       if (!password) throw new Error('Password required for encrypted sync');
-      const transport = createTransport(backup, this.claw);
+      transport = createTransport(backup, this.claw);
       const sm = new SyncManager(this.claw, transport, password);
       result = await sm.sync();
     } else if (target === 'git') {
@@ -155,6 +156,13 @@ class BackupManager {
     const freshConfig = this.claw.loadConfig();
     freshConfig.backup.lastSync = new Date().toISOString();
     this.claw.saveConfig(freshConfig);
+
+    // Report sync stats to cloud API (fire-and-forget)
+    if (target === 'cloud' && transport.reportSync) {
+      const chunkCount = freshConfig.backup.chunkCount || result.chunkCount || 0;
+      const totalSize = result.totalSize || 0;
+      transport.reportSync({ chunkCount, totalSize }).catch(() => {});
+    }
 
     return { ...result, lastSync: freshConfig.backup.lastSync };
   }
