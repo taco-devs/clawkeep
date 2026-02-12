@@ -141,13 +141,12 @@ class BackupManager {
 
     let result;
     let transport;
-    let syncManager;
     if (target === 'local' || target === 's3' || target === 'cloud') {
       // Encrypted incremental sync (local, S3, or cloud)
       if (!password) throw new Error('Password required for encrypted sync');
       transport = createTransport(backup, this.claw);
-      syncManager = new SyncManager(this.claw, transport, password);
-      result = await syncManager.sync();
+      const sm = new SyncManager(this.claw, transport, password);
+      result = await sm.sync();
     } else if (target === 'git') {
       await this.claw.push();
       result = { ok: true, target: 'git', synced: true };
@@ -158,19 +157,10 @@ class BackupManager {
     freshConfig.backup.lastSync = new Date().toISOString();
     this.claw.saveConfig(freshConfig);
 
-    // Report sync stats to cloud API (fire-and-forget)
+    // Notify cloud API that a sync occurred (fire-and-forget)
+    // The API reads real stats from R2 — we just ping it.
     if (target === 'cloud' && transport && transport.reportSync) {
-      try {
-        // Get accurate stats from manifest (result may be "already up to date" with no sizes)
-        const status = await syncManager.getStatus();
-        const chunkCount = status.chunkCount || freshConfig.backup.chunkCount || 0;
-        const totalSize = status.totalSize || 0;
-        transport.reportSync({ chunkCount, totalSize }).catch(() => {});
-      } catch {
-        // Fall back to result data if getStatus fails
-        const chunkCount = freshConfig.backup.chunkCount || result.chunkCount || 0;
-        transport.reportSync({ chunkCount, totalSize: result.totalSize || 0 }).catch(() => {});
-      }
+      transport.reportSync().catch(() => {});
     }
 
     return { ...result, lastSync: freshConfig.backup.lastSync };
