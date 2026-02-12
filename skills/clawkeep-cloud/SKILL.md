@@ -14,64 +14,60 @@ Encrypted backup storage with zero-knowledge encryption. Your keys, your data.
 1. ClawKeep CLI installed (`npm install -g clawkeep`)
 2. ClawKeep Cloud account at https://clawkeep.com
 
-## Quick Setup
+## Quick Setup (Keyless Daemon)
 
-One command connects everything:
+One command connects everything — **no password in environment needed**:
 
 ```bash
-# Interactive (opens browser for auth)
+# Opens browser → login → set encryption password in browser
 clawkeep cloud setup
 
-# Headless (for SSH sessions or CI)
-clawkeep cloud setup --api-key ck_live_xxxxx --workspace ws_xxxxx
-
-# Or use environment variable for API key
-export CLAWKEEP_API_KEY=ck_live_xxxxx
-clawkeep cloud setup --workspace ws_xxxxx
+# Start auto-sync daemon (NO CLAWKEEP_PASSWORD needed!)
+clawkeep watch --sync --daemon
 ```
 
-Then set your encryption password and sync:
-
-```bash
-clawkeep backup set-password
-clawkeep backup sync
-```
+The encryption password is set in the browser during setup. The CLI receives only encrypted key material — it never sees your plaintext password.
 
 ## Full Setup Flow
 
-### 1. Connect to Cloud
+### 1. Connect to Cloud (Browser Flow)
 
 ```bash
-# Browser flow (recommended for first-time setup)
 clawkeep cloud setup
-# -> Opens browser -> Login/Register -> Click Connect -> Done
+# -> Opens browser
+# -> Login/Register
+# -> Set your encryption password in the browser
+# -> Click Connect
+# -> CLI receives encrypted key material
+```
 
-# Headless flow (for remote servers, CI, AI agents)
+**Security:** The password is derived into an encryption key in your browser. The plaintext password never leaves the browser, never hits the API, and the CLI never sees it.
+
+### 2. Start Auto-Sync Daemon
+
+```bash
+# No password environment variable needed!
+clawkeep watch --sync --daemon
+
+# Works with PM2, systemd, or any process manager
+pm2 start "clawkeep watch --sync" --name clawkeep-watch
+pm2 save
+```
+
+### 3. Verify Status
+
+```bash
+clawkeep status
+clawkeep cloud status
+```
+
+## Headless Setup (CI/Agents)
+
+For environments without a browser:
+
+```bash
+# Use API key + workspace (password still set via browser first)
 clawkeep cloud setup --api-key ck_live_xxxxx --workspace ws_xxxxx
-```
-
-### 2. Set Encryption Password
-
-```bash
-# Set password (REMEMBER THIS - unrecoverable if lost)
-CLAWKEEP_PASSWORD='your-secure-password' clawkeep backup set-password
-
-# Or pass directly
-clawkeep backup set-password -p 'your-secure-password'
-```
-
-### 3. Create Files + Sync
-
-```bash
-clawkeep snap                    # Snapshot current state
-clawkeep backup sync             # Sync encrypted backup to cloud
-```
-
-### 4. Auto-Sync with Watch Daemon
-
-```bash
-# Start watching for changes (backs up + syncs on every file change)
-CLAWKEEP_PASSWORD='xxx' clawkeep watch --daemon
 ```
 
 ## Common Operations
@@ -79,14 +75,14 @@ CLAWKEEP_PASSWORD='xxx' clawkeep watch --daemon
 ### Sync
 
 ```bash
-# Manual sync
-CLAWKEEP_PASSWORD='xxx' clawkeep backup sync
+# Manual sync (no password needed if cloud setup done)
+clawkeep backup sync
 
 # Check sync status
 clawkeep backup status
 
 # Compact backup chunks (reclaim space)
-CLAWKEEP_PASSWORD='xxx' clawkeep backup compact
+clawkeep backup compact
 ```
 
 ### Cloud Status
@@ -102,35 +98,11 @@ clawkeep cloud logout
 ### Restore
 
 ```bash
+# List backup history
+clawkeep log
+
 # Restore from a backup snapshot
-clawkeep restore <hash> -d /path/to/workspace
-
-# View backup history
-clawkeep log -d /path/to/workspace
-```
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CLAWKEEP_PASSWORD` | Encryption password | Yes (for sync) |
-| `CLAWKEEP_API_KEY` | API key for auth | For headless setup |
-
-## Automated Backup (Daemon)
-
-```bash
-# Start watching for changes (backs up on change)
-CLAWKEEP_PASSWORD='xxx' clawkeep watch --daemon --interval 10000
-
-# Stop the daemon
-clawkeep watch --stop
-```
-
-### Using Cron
-
-```bash
-# Backup every hour
-0 * * * * CLAWKEEP_PASSWORD='xxx' clawkeep backup sync -d /path/to/workspace
+clawkeep restore <hash>
 ```
 
 ## Agent Integration
@@ -138,38 +110,56 @@ clawkeep watch --stop
 Add to your agent's startup sequence:
 
 ```bash
-# One-time setup (headless)
-clawkeep cloud setup --api-key ck_live_xxx --workspace ws_xxx -p 'password'
+# One-time setup (human does this in browser)
+clawkeep cloud setup
 
-# Start auto-backup daemon
-CLAWKEEP_PASSWORD='password' clawkeep watch --daemon -d /path/to/workspace
+# Start auto-backup daemon (no password needed!)
+pm2 start "clawkeep watch --sync --interval 10000 -d /path/to/workspace" --name clawkeep-watch
+pm2 save
+```
+
+## Local/S3 Targets (Non-Cloud)
+
+For local path or S3 targets, set the password once:
+
+```bash
+# Set password (stores encrypted key material)
+clawkeep backup set-password
+
+# Configure target
+clawkeep backup local /mnt/nas/backups
+# or
+clawkeep backup s3 --endpoint https://... --bucket my-backups
+
+# Start daemon (no password in env needed after set-password)
+clawkeep watch --sync --daemon
 ```
 
 ## Troubleshooting
 
-### "No API key found"
+### "No encrypted key material found"
 
+Run the cloud setup again:
 ```bash
-clawkeep cloud setup  # Re-authenticate
-# or
-export CLAWKEEP_API_KEY=ck_live_xxxxx
+clawkeep cloud setup
 ```
 
-### "Password required for encrypted sync"
+### "Cannot decrypt chunk" 
 
+Password mismatch. You may need to re-run cloud setup if the password was changed.
+
+### Watch daemon not syncing
+
+Check PM2 logs:
 ```bash
-export CLAWKEEP_PASSWORD='your-password'
-clawkeep backup sync
+pm2 logs clawkeep-watch
 ```
-
-### "Cannot decrypt chunk"
-
-Password mismatch. Ensure `CLAWKEEP_PASSWORD` matches what was used during backup.
 
 ## Security Notes
 
-- All encryption happens client-side before upload
-- Server stores only encrypted chunks (ciphertext)
-- Password never leaves your machine
-- API keys can be rotated from the dashboard
-- If you lose your password, your data is unrecoverable (zero-knowledge)
+- **Zero-knowledge:** Server stores only encrypted chunks
+- **Keyless daemon:** No password in environment variables
+- **Browser-based password:** Plaintext password never leaves your browser
+- **Client-side encryption:** All encryption happens locally before upload
+- **API keys:** Can be rotated from the dashboard
+- **Unrecoverable:** If you lose your password, your data is unrecoverable (true zero-knowledge)

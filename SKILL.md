@@ -40,16 +40,26 @@ Start a background daemon that auto-snapshots on every file change:
 
 ```bash
 clawkeep watch --daemon -d /path/to/workspace --interval 10000
+
+# With cloud sync (no password in environment needed!)
+clawkeep watch --sync --daemon -d /path/to/workspace
 ```
 
 - Runs in background, survives terminal close
 - Debounces writes (default 10s) to avoid spam commits
 - Stop with: `clawkeep watch --stop -d /path/to/workspace`
 - Check if running: `cat /path/to/workspace/.clawkeep/watch.pid`
+- **Keyless:** After `clawkeep cloud setup`, no `CLAWKEEP_PASSWORD` env var needed
 
 **When to use:** You want continuous, hands-off backup. Set it once and forget.
 
 **Startup:** Add to your agent's boot sequence or system init.
+
+```bash
+# PM2 example (no password needed!)
+pm2 start "clawkeep watch --sync -d /path/to/workspace" --name clawkeep-watch
+pm2 save
+```
 
 ### Option B: Heartbeat Snapshots
 
@@ -175,14 +185,18 @@ clawkeep backup restore /mnt/nas/backups/workspace-id/ -d /path/to/workspace
 All backups are AES-256-GCM encrypted. Target path only contains opaque `.enc` chunk files.
 Available targets: `local` (folder/NAS), `s3` (any S3-compatible storage), `cloud` (ClawKeep Cloud).
 
-### ClawKeep Cloud Target
+### ClawKeep Cloud Target (Recommended)
 
 ```bash
 # One-command setup (opens browser for auth)
+# Human sets encryption password in browser — CLI never sees it
 clawkeep cloud setup -d /path/to/workspace
 
 # Headless setup (for SSH, CI, AI agents)
 clawkeep cloud setup --api-key ck_live_xxx --workspace ws_xxx -d /path/to/workspace
+
+# Start auto-sync daemon (NO password in environment needed!)
+clawkeep watch --sync --daemon -d /path/to/workspace
 
 # Check cloud connection
 clawkeep cloud status -d /path/to/workspace
@@ -190,6 +204,8 @@ clawkeep cloud status -d /path/to/workspace
 # Disconnect
 clawkeep cloud logout
 ```
+
+**Security:** When using browser auth, your encryption password is set in the browser and derived into an encryption key locally. The plaintext password never leaves your browser, never hits the API, and the CLI never sees it. The daemon runs without any password in the environment.
 
 ### S3 / R2 Target
 
