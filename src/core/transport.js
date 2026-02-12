@@ -182,11 +182,11 @@ class CloudTransport extends BackupTransport {
   }
 
   /**
-   * Report sync stats to the cloud API (fire-and-forget).
+   * Notify the cloud API that a sync occurred (fire-and-forget).
+   * The API reads actual stats from R2 — we just ping it.
    */
-  async reportSync({ chunkCount, totalSize }) {
+  async reportSync() {
     const url = `${this.endpoint}/api/workspaces/${this.workspace}/sync-report`;
-    const body = JSON.stringify({ chunk_count: chunkCount, storage_bytes: totalSize });
     try {
       await new Promise((resolve, reject) => {
         const parsed = new URL(url);
@@ -204,7 +204,7 @@ class CloudTransport extends BackupTransport {
         });
         req.on('error', reject);
         req.setTimeout(15000, () => req.destroy(new Error('Sync report timeout')));
-        req.end(body);
+        req.end('{}');
       });
     } catch {
       // Fire-and-forget: don't fail the sync if report fails
